@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// Clients only read. Every change goes through Cloud Functions, which apply
+// the poll rules inside transactions.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(groupId) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberUids;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      // The app keeps its own push IDs and language up to date.
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['pushIds', 'language']);
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pushIds', 'language']);
+    }
+
+    match /groups/{groupId} {
+      allow read: if isMember(groupId);
+
+      match /{document=**} {
+        allow read: if isMember(groupId);
+      }
+    }
+  }
+}

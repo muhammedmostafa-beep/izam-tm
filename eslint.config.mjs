@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The Tashkeela football app is a separate Flutter + Firebase project.
+    "tashkeela/**",
   ]),
 ]);
 

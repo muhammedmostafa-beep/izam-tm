@@ -1,0 +1,171 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../l10n.dart';
+import '../models.dart';
+import '../roster_line.dart';
+import '../services/services.dart';
+import '../widgets.dart';
+import 'group_tab.dart';
+import 'squad_tab.dart';
+import 'this_week_tab.dart';
+
+/// Everything the tabs show, from one consistent set of live streams.
+class GroupView {
+  const GroupView({
+    required this.uid,
+    required this.group,
+    required this.members,
+    required this.game,
+    required this.entries,
+    required this.log,
+    required this.groupIds,
+  });
+
+  final String uid;
+  final Group group;
+  final List<Member> members;
+  final Game? game;
+  final List<Entry> entries;
+  final List<LogItem> log;
+  final List<String> groupIds;
+
+  bool get isAdmin => group.isAdmin(uid);
+  Member? get me => members.where((m) => m.uid == uid).firstOrNull;
+  Map<String, Member> get membersById => {for (final m in members) m.id: m};
+  RosterLine get line => RosterLine.from(entries, game?.squadSize ?? group.rules.squadSize);
+  MyStatus get myStatus => line.statusOf(me?.id);
+  String nameOf(String? memberId) =>
+      membersById[memberId]?.name ?? entries.where((e) => e.memberId == memberId).firstOrNull?.name ?? '';
+}
+
+class HomeShell extends StatefulWidget {
+  const HomeShell({
+    super.key,
+    required this.groupId,
+    required this.uid,
+    required this.groupIds,
+    required this.onSwitchGroup,
+  });
+
+  final String groupId;
+  final String uid;
+  final List<String> groupIds;
+  final ValueChanged<String> onSwitchGroup;
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  final _subs = <StreamSubscription<Object?>>[];
+  final _gameSubs = <StreamSubscription<Object?>>[];
+  Group? _group;
+  List<Member>? _members;
+  Game? _game;
+  List<Entry> _entries = const [];
+  List<LogItem> _log = const [];
+  String? _gameId;
+  bool _languageAdopted = false;
+  bool _missing = false;
+  int _tab = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_subs.isNotEmpty) return;
+    final repo = context.services.repo;
+    _subs
+      ..add(repo.group(widget.groupId).listen((g) {
+        setState(() {
+          _group = g;
+          _missing = g == null;
+        });
+        if (g?.currentGameId != _gameId) _watchGame(g?.currentGameId);
+      }))
+      ..add(repo.members(widget.groupId).listen((m) {
+        setState(() => _members = m);
+        _adoptLanguage(m);
+      }))
+      ..add(context.services.push.foregroundMessages.listen((message) {
+        final n = message.notification;
+        if (n == null || !mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text([n.title, n.body].whereType<String>().join('\n'))));
+      }));
+  }
+
+  void _watchGame(String? gameId) {
+    for (final s in _gameSubs) {
+      s.cancel();
+    }
+    _gameSubs.clear();
+    _gameId = gameId;
+    setState(() {
+      _game = null;
+      _entries = const [];
+      _log = const [];
+    });
+    if (gameId == null) return;
+    final repo = context.services.repo;
+    _gameSubs
+      ..add(repo.game(widget.groupId, gameId).listen((g) => setState(() => _game = g)))
+      ..add(repo.entries(widget.groupId, gameId).listen((e) => setState(() => _entries = e)))
+      ..add(repo.log(widget.groupId, gameId).listen((l) => setState(() => _log = l)));
+  }
+
+  /// Use the language the member chose (on any device) the first time we see it.
+  void _adoptLanguage(List<Member> members) {
+    if (_languageAdopted) return;
+    final me = members.where((m) => m.uid == widget.uid).firstOrNull;
+    if (me == null) return;
+    _languageAdopted = true;
+    final language = LanguageScope.of(context);
+    if (language.value != me.language) language.value = me.language;
+  }
+
+  @override
+  void dispose() {
+    for (final s in [..._subs, ..._gameSubs]) {
+      s.cancel();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.s;
+    if (_missing) {
+      return Scaffold(body: Message(icon: Icons.error_outline, title: s.t('Group not found', 'الجروب مش موجود')));
+    }
+    final group = _group;
+    final members = _members;
+    if (group == null || members == null) return const Scaffold(body: Loading());
+    final view = GroupView(
+      uid: widget.uid,
+      group: group,
+      members: members,
+      game: _game,
+      entries: _entries,
+      log: _log,
+      groupIds: widget.groupIds,
+    );
+    final tabs = [
+      ThisWeekTab(view: view, onSwitchGroup: widget.onSwitchGroup, onOpenSquad: () => setState(() => _tab = 1)),
+      SquadTab(view: view),
+      GroupTab(view: view),
+    ];
+    return Scaffold(
+      body: SafeArea(child: IndexedStack(index: _tab, children: tabs)),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: [
+          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: s.t('This week', 'الأسبوع ده')),
+          NavigationDestination(icon: const Icon(Icons.groups_outlined), selectedIcon: const Icon(Icons.groups), label: s.t('Squad', 'التشكيلة')),
+          NavigationDestination(icon: const Icon(Icons.settings_outlined), selectedIcon: const Icon(Icons.settings), label: s.t('Group', 'الجروب')),
+        ],
+      ),
+    );
+  }
+}
