@@ -26,6 +26,7 @@ const waAppSecret = defineSecret("WHATSAPP_APP_SECRET");
 const waVerifyToken = defineSecret("WHATSAPP_VERIFY_TOKEN");
 const waPhoneNumberId = defineString("WHATSAPP_PHONE_NUMBER_ID", { default: "" });
 const waApiVersion = defineString("WHATSAPP_API_VERSION", { default: "v23.0" });
+const waApiBase = defineString("WHATSAPP_API_BASE", { default: "https://graph.facebook.com" });
 const appUrl = defineString("APP_URL", { default: "" });
 const secrets = [waToken, waAppSecret, waVerifyToken];
 
@@ -34,7 +35,12 @@ function senders(): Senders {
   return {
     push: new FcmPushSender(),
     whatsapp: phoneNumberId
-      ? new CloudApiWhatsApp({ token: waToken.value(), phoneNumberId, apiVersion: waApiVersion.value() })
+      ? new CloudApiWhatsApp({
+          token: waToken.value(),
+          phoneNumberId,
+          apiVersion: waApiVersion.value(),
+          baseUrl: waApiBase.value(),
+        })
       : null,
   };
 }

@@ -26,6 +26,11 @@ export function formatClock(ms: number, timeZone: string, lang: Language): strin
   }).format(new Date(ms));
 }
 
+/** Counts and positions in the reader's digits (Arabic-Indic for Arabic), like the dates. */
+export function formatNumber(n: number, lang: Language): string {
+  return new Intl.NumberFormat(lang === "ar" ? "ar-EG" : "en-GB").format(n);
+}
+
 export interface PushText {
   title: string;
   body: string;
@@ -37,7 +42,7 @@ export const pushText = {
   pollOpen: (lang: Language, p: { group: string; when: string; spots: number }): PushText =>
     pick(
       lang,
-      { title: `التصويت مفتوح: ${p.group}`, body: `${p.when} – ${p.spots} مكان. اضغط عشان تحجز مكانك.` },
+      { title: `التصويت مفتوح: ${p.group}`, body: `${p.when} – ${formatNumber(p.spots, "ar")} مكان. اضغط عشان تحجز مكانك.` },
       { title: `Poll is open: ${p.group}`, body: `${p.when} · ${p.spots} spots. Tap to grab yours.` },
     ),
   offered: (lang: Language, p: { when: string; deadline: string }): PushText =>
@@ -78,13 +83,13 @@ export const replyText = {
   joinedSquad: (lang: Language, p: { position: number; squadSize: number; when: string }) =>
     pick(
       lang,
-      `تمام، إنت جوه! رقم ${p.position} من ${p.squadSize} لماتش ${p.when}.`,
+      `تمام، إنت جوه! رقم ${formatNumber(p.position, "ar")} من ${formatNumber(p.squadSize, "ar")} لماتش ${p.when}.`,
       `You're in! #${p.position} of ${p.squadSize} for ${p.when}.`,
     ),
   joinedReserve: (lang: Language, p: { reserve: number; when: string }) =>
     pick(
       lang,
-      `التشكيلة كاملة، إنت احتياطي رقم ${p.reserve} لماتش ${p.when}. هنبعتلك لو فضي مكان.`,
+      `التشكيلة كاملة، إنت احتياطي رقم ${formatNumber(p.reserve, "ar")} لماتش ${p.when}. هنبعتلك لو فضي مكان.`,
       `The squad is full; you're reserve #${p.reserve} for ${p.when}. We'll message you if a spot opens.`,
     ),
   confirmed: (lang: Language, p: { when: string }) =>

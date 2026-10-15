@@ -53,6 +53,8 @@ export interface CloudApiConfig {
   token: string;
   phoneNumberId: string;
   apiVersion: string;
+  /** Defaults to Meta's Graph API; point it at a local stub to test without sending. */
+  baseUrl?: string;
 }
 
 /** WhatsApp Business Platform (Cloud API) over plain HTTPS. */
@@ -97,7 +99,8 @@ export class CloudApiWhatsApp implements WhatsAppSender {
   }
 
   private async post(body: unknown): Promise<void> {
-    const url = `https://graph.facebook.com/${this.config.apiVersion}/${this.config.phoneNumberId}/messages`;
+    const base = this.config.baseUrl || "https://graph.facebook.com";
+    const url = `${base}/${this.config.apiVersion}/${this.config.phoneNumberId}/messages`;
     const res = await this.fetchFn(url, {
       method: "POST",
       headers: {

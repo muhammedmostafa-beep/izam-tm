@@ -73,12 +73,17 @@ This week tab.
 ```sh
 cd tashkeela/functions
 npm test                 # rules, time zones, messages: no emulator needed
-npm run test:emulator    # transactions, scheduler, WhatsApp buttons, security rules
+npm run test:emulator    # transactions, scheduler, WhatsApp buttons, Firestore and Storage rules
 
 cd ../app
 flutter analyze
 flutter test
 ```
+
+Behind an HTTPS proxy, the Storage emulator sends its rule lookups into
+Firestore through the proxy (it ignores `NO_PROXY`), and every photo upload is
+refused. Run the emulators with the proxy variables unset, for example
+`env -u HTTPS_PROXY -u https_proxy npm run test:emulator`.
 
 ## Set it up for real
 

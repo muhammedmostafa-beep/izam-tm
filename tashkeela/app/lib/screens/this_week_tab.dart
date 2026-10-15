@@ -155,7 +155,8 @@ class _MatchCard extends StatelessWidget {
               const SizedBox(width: 4),
               Expanded(child: Text(view.group.venue, style: const TextStyle(color: Palette.muted))),
             ]),
-            if (DateTime.now().isBefore(game.kickoffAt)) ...[
+            // Only while the game is still ahead; a closed, played or cancelled game has nothing to count down to.
+            if ((game.status == GameStatus.scheduled || game.status == GameStatus.open) && DateTime.now().isBefore(game.kickoffAt)) ...[
               const SizedBox(height: 4),
               Countdown(
                 target: game.kickoffAt,
@@ -292,7 +293,12 @@ class _ActionArea extends StatelessWidget {
         );
       case GameStatus.closed || GameStatus.played || GameStatus.cancelled:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(s.t('The poll for this game is closed.', 'التصويت للماتش ده اتقفل.'), style: const TextStyle(color: Palette.muted)),
+          Text(
+            game.status == GameStatus.played
+                ? s.t('Full time.', 'الماتش خلص.')
+                : s.t('The poll for this game is closed.', 'التصويت للماتش ده اتقفل.'),
+            style: const TextStyle(color: Palette.muted),
+          ),
           if (view.isAdmin && game.status == GameStatus.closed) ...[
             const SizedBox(height: 12),
             FilledButton.icon(

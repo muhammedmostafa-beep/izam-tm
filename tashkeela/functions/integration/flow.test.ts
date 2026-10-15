@@ -266,6 +266,16 @@ describe("notifications", () => {
     assert.equal(whatsapp.templates.length, 0, "opted out of WhatsApp");
   });
 
+  it("still sends WhatsApp messages when push is down", async () => {
+    const { groupId } = await setupGroup(1);
+    await groups.claimMemberships(db, { uid: "u1", phone: phoneOf(1) });
+    await db.doc("users/u1").set({ pushIds: ["id-1"] }, { merge: true });
+    const whatsapp = new FakeWhatsApp();
+    const brokenPush = { send: async () => Promise.reject(new Error("FCM unavailable")) };
+    await dispatch(db, [{ kind: "poll_open", groupId, gameId: GAME }], { push: brokenPush, whatsapp });
+    assert.equal(whatsapp.templates.length, 2);
+  });
+
   it("lets players join and confirm by tapping WhatsApp buttons", async () => {
     const { groupId, ids } = await setupGroup(19);
     await tickGroup(db, groupId, at("2026-10-18T09:00:00Z"));
@@ -278,7 +288,7 @@ describe("notifications", () => {
 
     await tap("wamid.1", "JOIN", "2026-10-18T09:02:00Z");
     assert.equal((await entryDoc(groupId, ids[18]))?.source, "whatsapp");
-    assert.match(whatsapp.texts[0].text, /reserve #1|احتياطي رقم ١|احتياطي رقم 1/);
+    assert.match(whatsapp.texts[0].text, /reserve #1|احتياطي رقم ١ /);
 
     await tap("wamid.1", "JOIN", "2026-10-18T09:02:05Z"); // Meta retried the delivery
     assert.equal(whatsapp.texts.length, 1);

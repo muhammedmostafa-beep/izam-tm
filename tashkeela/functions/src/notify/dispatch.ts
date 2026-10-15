@@ -4,7 +4,7 @@ import { gameRef, groupRef } from "../core/games";
 import { toWaId } from "../core/phone";
 import { entryFromDoc, EntryDoc, GameDoc, GroupDoc, MemberDoc, UserDoc } from "../model";
 import { rosterView } from "../domain/roster";
-import { buttonPayload, formatClock, formatWhen, pushText, PushText, TEMPLATES } from "./messages";
+import { buttonPayload, formatClock, formatNumber, formatWhen, pushText, PushText, TEMPLATES } from "./messages";
 import { Notice } from "./notices";
 import { PushSender, WhatsAppSender } from "./senders";
 
@@ -60,7 +60,7 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
         push: (r) => pushText.pollOpen(r.member.language, { group: group.name, when: when(r), spots: group.rules.squadSize }),
         whatsapp: !group.reminders.pollOpening ? undefined : (r) => ({
           template: TEMPLATES.pollOpen,
-          params: [when(r), group.venue, String(group.rules.squadSize)],
+          params: [when(r), group.venue, formatNumber(group.rules.squadSize, r.member.language)],
           buttons: [buttonPayload("JOIN", n.groupId, n.gameId), buttonPayload("SKIP", n.groupId, n.gameId)],
         }),
       };
@@ -92,7 +92,7 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
         push: (r) => pushText.matchDay(r.member.language, { time: formatClock(kickoff, tz, r.member.language), venue: group.venue }),
         whatsapp: !group.reminders.matchDay ? undefined : (r) => ({
           template: TEMPLATES.matchDay,
-          params: [formatClock(kickoff, tz, r.member.language), group.venue, String(group.rules.squadSize)],
+          params: [formatClock(kickoff, tz, r.member.language), group.venue, formatNumber(group.rules.squadSize, r.member.language)],
         }),
       };
       break;
@@ -108,7 +108,12 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
     }
   }
 
-  await sendPush(db, out, senders.push, data);
+  try {
+    await sendPush(db, out, senders.push, data);
+  } catch (e) {
+    // A push outage must not stop the WhatsApp messages below.
+    logger.warn("push failed", { kind: n.kind, error: (e as Error).message });
+  }
   if (out.whatsapp && senders.whatsapp) {
     const wa = senders.whatsapp;
     const build = out.whatsapp;

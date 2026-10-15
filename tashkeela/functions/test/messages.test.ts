@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
 import { normalizePhone, toWaId } from "../src/core/phone";
-import { buttonPayload, formatWhen, parseButtonPayload, replyText } from "../src/notify/messages";
+import { buttonPayload, formatWhen, parseButtonPayload, pushText, replyText } from "../src/notify/messages";
 import { parseInbound, verifySignature } from "../src/notify/inbound";
 import { CloudApiWhatsApp } from "../src/notify/senders";
 
@@ -80,6 +80,17 @@ describe("WhatsApp buttons", () => {
     });
   });
 
+  it("can talk to a local stub instead of Meta", async () => {
+    const urls: string[] = [];
+    const fakeFetch = (async (url: string) => {
+      urls.push(url);
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    const wa = new CloudApiWhatsApp({ token: "t", phoneNumberId: "9", apiVersion: "v23.0", baseUrl: "http://127.0.0.1:5055" }, fakeFetch);
+    await wa.sendText("1", "hi");
+    assert.deepEqual(urls, ["http://127.0.0.1:5055/v23.0/9/messages"]);
+  });
+
   it("surfaces API errors", async () => {
     const failing = (async () => new Response("bad token", { status: 401 })) as unknown as typeof fetch;
     const wa = new CloudApiWhatsApp({ token: "x", phoneNumberId: "1", apiVersion: "v23.0" }, failing);
@@ -92,6 +103,15 @@ describe("message texts", () => {
     const kickoff = Date.parse("2026-10-22T18:00:00Z");
     assert.match(formatWhen(kickoff, "Africa/Cairo", "en"), /Thu 22 Oct.*9:00\s?pm/i);
     assert.match(formatWhen(kickoff, "Africa/Cairo", "ar"), /الخميس/);
+  });
+
+  it("writes numbers in Arabic-Indic digits in Arabic texts", () => {
+    const ar = replyText.joinedSquad("ar", { position: 16, squadSize: 18, when: "x" });
+    assert.match(ar, /١٦ من ١٨/);
+    assert.doesNotMatch(ar, /[0-9]/);
+    assert.match(replyText.joinedReserve("ar", { reserve: 2, when: "x" }), /رقم ٢ /);
+    assert.match(pushText.pollOpen("ar", { group: "g", when: "x", spots: 18 }).body, /١٨ مكان/);
+    assert.match(replyText.joinedSquad("en", { position: 16, squadSize: 18, when: "x" }), /#16 of 18/);
   });
 
   it("explains every refusal in both languages", () => {

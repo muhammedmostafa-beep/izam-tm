@@ -64,6 +64,14 @@ void main() {
       expect(find.text('Open the poll now'), findsNothing);
     });
 
+    testWidgets('stops counting down once the game is over', (tester) async {
+      await tester.pumpWidget(thisWeek(currentGame: game(status: GameStatus.open)));
+      expect(find.textContaining('Kick-off in'), findsOneWidget);
+      await tester.pumpWidget(thisWeek(currentGame: game(status: GameStatus.played)));
+      expect(find.text('Full time.'), findsOneWidget);
+      expect(find.textContaining('Kick-off in'), findsNothing);
+    });
+
     testWidgets('lets organizers open the poll early', (tester) async {
       await tester.pumpWidget(
           thisWeek(entries: const [], currentGame: game(status: GameStatus.scheduled, squadCount: 0), admin: true));
