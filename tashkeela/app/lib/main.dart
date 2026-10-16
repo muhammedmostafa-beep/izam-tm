@@ -5,13 +5,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'app.dart';
 import 'firebase_options.dart';
 import 'services/api.dart';
+import 'services/auth.dart';
+import 'services/photos.dart';
 import 'services/push.dart';
 import 'services/repo.dart';
 import 'services/services.dart';
@@ -20,7 +21,7 @@ const _useEmulators = bool.fromEnvironment('USE_EMULATORS');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  _registerFontLicenses();
+  registerFontLicenses();
   await initializeDateFormatting();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -40,20 +41,12 @@ Future<void> main() async {
 
   runApp(TashkeelaApp(
     services: Services(
-      auth: auth,
-      api: Api(functions),
-      repo: Repo(db),
-      push: PushService(FirebaseMessaging.instance, db),
-      storage: storage,
+      auth: FirebaseAuthService(auth),
+      api: FirebaseApi(functions),
+      repo: FirestoreRepo(db),
+      push: FirebasePushService(FirebaseMessaging.instance, db),
+      photos: FirebasePhotoStore(storage),
     ),
   ));
 }
 
-void _registerFontLicenses() {
-  const fonts = {'Barlow Condensed': 'BarlowCondensed', 'DM Sans': 'DMSans', 'IBM Plex Sans Arabic': 'IBMPlexSansArabic'};
-  LicenseRegistry.addLicense(() async* {
-    for (final MapEntry(key: name, value: file) in fonts.entries) {
-      yield LicenseEntryWithLineBreaks([name], await rootBundle.loadString('assets/fonts/OFL-$file.txt'));
-    }
-  });
-}

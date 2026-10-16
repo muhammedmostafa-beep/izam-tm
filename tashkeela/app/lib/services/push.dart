@@ -10,16 +10,37 @@ import 'package:flutter/foundation.dart';
 /// Web push key from Firebase console > Cloud Messaging > Web Push certificates.
 const _vapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
 
-class PushService {
-  PushService(this._messaging, this._db);
+/// A notification that arrived while the app is open.
+class PushMessage {
+  const PushMessage({this.title, this.body});
+  final String? title;
+  final String? body;
+}
+
+abstract interface class PushService {
+  /// Notifications arriving while the app is open, to show in the app.
+  Stream<PushMessage> get messages;
+
+  Future<void> register(String uid);
+
+  /// On sign-out, stop this device getting the previous player's messages.
+  Future<void> unregister(String uid);
+}
+
+class FirebasePushService implements PushService {
+  FirebasePushService(this._messaging, this._db);
 
   final FirebaseMessaging _messaging;
   final FirebaseFirestore _db;
   StreamSubscription<String>? _registered;
   String? _id;
 
-  Stream<RemoteMessage> get foregroundMessages => FirebaseMessaging.onMessage;
+  @override
+  Stream<PushMessage> get messages => FirebaseMessaging.onMessage
+      .where((m) => m.notification != null)
+      .map((m) => PushMessage(title: m.notification!.title, body: m.notification!.body));
 
+  @override
   Future<void> register(String uid) async {
     try {
       if (kIsWeb && _vapidKey.isEmpty) return;
@@ -39,7 +60,7 @@ class PushService {
     }
   }
 
-  /// On sign-out, stop this device getting the previous player's messages.
+  @override
   Future<void> unregister(String uid) async {
     await _registered?.cancel();
     _registered = null;

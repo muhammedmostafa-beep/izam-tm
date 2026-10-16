@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
@@ -53,7 +52,7 @@ class _ResultScreenState extends State<ResultScreen> {
     final saved = await runAction(context, () async {
       if (icon != null) {
         path = 'groups/${widget.group.id}/champions/${game.id}.png';
-        await services.storage.ref(path).putData(icon, SettableMetadata(contentType: 'image/png'));
+        await services.photos.putPng(path!, icon);
       }
       await services.api.recordResult(widget.group.id, game.id, winner: _winner, photoPath: path);
       return true;

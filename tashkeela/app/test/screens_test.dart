@@ -72,6 +72,12 @@ void main() {
       expect(find.textContaining('Kick-off in'), findsNothing);
     });
 
+    testWidgets('counts one reserve in the singular', (tester) async {
+      final entries = [for (var i = 1; i <= 19; i++) entry(i, state: i <= 18 ? EntryState.confirmed : EntryState.waiting)];
+      await tester.pumpWidget(thisWeek(entries: entries, currentGame: game(reserveCount: 1)));
+      expect(find.text('1 reserve'), findsOneWidget);
+    });
+
     testWidgets('lets organizers open the poll early', (tester) async {
       await tester.pumpWidget(
           thisWeek(entries: const [], currentGame: game(status: GameStatus.scheduled, squadCount: 0), admin: true));

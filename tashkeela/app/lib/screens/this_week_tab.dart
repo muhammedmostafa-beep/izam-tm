@@ -174,7 +174,7 @@ class _MatchCard extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               const Spacer(),
               if (line.reserves.isNotEmpty)
-                Text(s.t('${s.n(line.reserves.length)} reserves', '${s.n(line.reserves.length)} احتياطي'),
+                Text(s.t('${s.n(line.reserves.length)} ${line.reserves.length == 1 ? 'reserve' : 'reserves'}', '${s.n(line.reserves.length)} احتياطي'),
                     style: const TextStyle(color: Palette.amber, fontWeight: FontWeight.w700)),
             ]),
           ]),
@@ -217,7 +217,7 @@ class _CapacityBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final cells = line.squadSize + line.reserves.length;
     return Semantics(
-      label: '${line.squad.length} of ${line.squadSize}, ${line.reserves.length} reserves',
+      label: '${line.squad.length} of ${line.squadSize}, ${line.reserves.length} ${line.reserves.length == 1 ? 'reserve' : 'reserves'}',
       child: Row(children: [
         for (var i = 0; i < cells; i++)
           Expanded(

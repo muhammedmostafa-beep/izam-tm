@@ -1,10 +1,9 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n.dart';
 import '../phone.dart';
+import '../services/auth.dart';
 import '../services/services.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -20,11 +19,10 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final _phone = TextEditingController();
   final _code = TextEditingController();
-  String? _verificationId; // Android and iOS
-  ConfirmationResult? _webConfirmation; // web
+  PhoneVerification? _verification;
   String? _error;
 
-  bool get _codeSent => _verificationId != null || _webConfirmation != null;
+  bool get _codeSent => _verification != null;
 
   @override
   void dispose() {
@@ -43,38 +41,22 @@ class _SignInScreenState extends State<SignInScreen> {
     }
     setState(() => _error = null);
     try {
-      if (kIsWeb) {
-        final confirmation = await auth.signInWithPhoneNumber(phone);
-        setState(() => _webConfirmation = confirmation);
-        return;
-      }
-      await auth.verifyPhoneNumber(
-        phoneNumber: phone,
-        verificationCompleted: (credential) => auth.signInWithCredential(credential),
-        verificationFailed: (e) => setState(() => _error = _authError(e)),
-        codeSent: (id, _) => setState(() => _verificationId = id),
-        codeAutoRetrievalTimeout: (_) {},
-      );
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = _authError(e));
+      final verification = await auth.sendCode(phone);
+      if (mounted) setState(() => _verification = verification);
+    } on AuthFailure catch (e) {
+      if (mounted) setState(() => _error = _authError(e));
     }
   }
 
   Future<void> _verify() async {
-    final auth = context.services.auth;
-    final code = _code.text.trim();
     try {
-      if (_webConfirmation != null) {
-        await _webConfirmation!.confirm(code);
-      } else {
-        await auth.signInWithCredential(PhoneAuthProvider.credential(verificationId: _verificationId!, smsCode: code));
-      }
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = _authError(e));
+      await _verification!.confirm(_code.text.trim());
+    } on AuthFailure catch (e) {
+      if (mounted) setState(() => _error = _authError(e));
     }
   }
 
-  String _authError(FirebaseAuthException e) {
+  String _authError(AuthFailure e) {
     final s = context.s;
     return switch (e.code) {
       'invalid-verification-code' => s.t('That code is not right.', 'الكود ده غلط.'),
@@ -129,7 +111,9 @@ class _SignInScreenState extends State<SignInScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    s.t('Use the number the organizer added to the group.', 'استخدم الرقم اللي المنظم ضافه للجروب.'),
+                    context.services.isDemo
+                        ? s.t('Demo: any mobile number works. Nothing is sent.', 'تجربة: أي رقم موبايل ينفع. مفيش حاجة هتتبعت.')
+                        : s.t('Use the number the organizer added to the group.', 'استخدم الرقم اللي المنظم ضافه للجروب.'),
                     style: const TextStyle(color: Palette.muted, fontSize: 13),
                   ),
                   const SizedBox(height: 24),
@@ -142,15 +126,17 @@ class _SignInScreenState extends State<SignInScreen> {
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
                     textAlign: TextAlign.center,
                     style: display(32),
-                    decoration: InputDecoration(labelText: s.t('6-digit code', 'الكود (٦ أرقام)')),
+                    decoration: InputDecoration(
+                      labelText: s.t('6-digit code', 'الكود (٦ أرقام)'),
+                      helperText: context.services.isDemo ? s.t('Demo: any 6 digits.', 'تجربة: أي ٦ أرقام.') : null,
+                    ),
                     onSubmitted: (_) => _verify(),
                   ),
                   const SizedBox(height: 24),
                   BusyButton(label: s.t('Sign in', 'دخول'), onPressed: _verify),
                   TextButton(
                     onPressed: () => setState(() {
-                      _verificationId = null;
-                      _webConfirmation = null;
+                      _verification = null;
                       _code.clear();
                     }),
                     child: Text(s.t('Change number', 'غيّر الرقم')),

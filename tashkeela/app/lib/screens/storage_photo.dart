@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/services.dart';
 import '../theme.dart';
 
-final _urls = <String, Future<String>>{};
-
-/// A photo kept in Cloud Storage (champions photos), shown as a circle.
+/// A champions photo from the photo store, shown as a circle.
 class StoragePhoto extends StatelessWidget {
   const StoragePhoto({super.key, required this.path, this.size = 56, this.fallback});
 
@@ -24,13 +22,12 @@ class StoragePhoto extends StatelessWidget {
         );
     final p = path;
     if (p == null) return placeholder;
-    final url = _urls.putIfAbsent(p, () => context.services.storage.ref(p).getDownloadURL());
-    return FutureBuilder<String>(
-      future: url,
+    return FutureBuilder<ImageProvider>(
+      future: context.services.photos.image(p),
       builder: (context, snap) {
         if (!snap.hasData) return placeholder;
         return ClipOval(
-          child: Image.network(snap.data!, width: size, height: size, fit: BoxFit.cover,
+          child: Image(image: snap.data!, width: size, height: size, fit: BoxFit.cover,
               errorBuilder: (_, _, _) => placeholder),
         );
       },

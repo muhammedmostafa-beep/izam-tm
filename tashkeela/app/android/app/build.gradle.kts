@@ -4,6 +4,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// `flutter build apk -t lib/main_demo.dart -P demo=true` makes the demo app, which installs
+// next to the real one.
+val demo = project.findProperty("demo") == "true"
+
 android {
     namespace = "app.tashkeela.tashkeela"
     compileSdk = flutter.compileSdkVersion
@@ -27,6 +31,8 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["appLabel"] = if (demo) "Tashkeela Demo" else "Tashkeela"
+        if (demo) applicationIdSuffix = ".demo"
     }
 
     buildTypes {

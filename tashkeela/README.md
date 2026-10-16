@@ -68,6 +68,26 @@ number; the code appears in the emulator log ("To verify the phone number …").
 The scheduler doesn't run in the emulator: use **Open the poll now** on the
 This week tab.
 
+## Demo app (nothing to set up)
+
+`lib/main_demo.dart` runs the real screens on a simulated week, entirely on
+the phone: one group of 22, a poll that opens a minute after you sign in (any
+number, any 6-digit code), and 21 scripted players who race you for the spots,
+drop out and answer offers using the same list rules as the server
+(`lib/demo/roster.dart`, a copy of `functions/src/domain/roster.ts`). The
+Group tab has demo controls: make someone drop out, skip to after the game,
+switch between the organizer's and a player's view, start over.
+
+```sh
+cd tashkeela/app
+flutter run -t lib/main_demo.dart
+flutter build apk --release -t lib/main_demo.dart -P demo=true   # installs as "Tashkeela Demo"
+```
+
+Every push that touches the app also builds the demo APK on GitHub Actions
+(`.github/workflows/tashkeela-demo-apk.yml`); download it from the run's
+`tashkeela-demo-apk` artifact.
+
 ## Tests
 
 ```sh

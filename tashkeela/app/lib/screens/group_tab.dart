@@ -25,6 +25,7 @@ class GroupTab extends StatelessWidget {
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
       Text(view.group.name.toUpperCase(), style: display(30)),
       Text(view.group.venue, style: const TextStyle(color: Palette.muted)),
+      if (services.demoPanel case final demoPanel?) demoPanel(context),
 
       SectionTitle(s.t('Me', 'أنا')),
       Card(

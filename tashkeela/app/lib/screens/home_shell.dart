@@ -88,10 +88,9 @@ class _HomeShellState extends State<HomeShell> {
         setState(() => _members = m);
         _adoptLanguage(m);
       }))
-      ..add(context.services.push.foregroundMessages.listen((message) {
-        final n = message.notification;
-        if (n == null || !mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text([n.title, n.body].whereType<String>().join('\n'))));
+      ..add(context.services.push.messages.listen((m) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text([m.title, m.body].whereType<String>().join('\n'))));
       }));
   }
 

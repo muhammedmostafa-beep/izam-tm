@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'l10n.dart';
@@ -10,6 +11,16 @@ import 'screens/sign_in_screen.dart';
 import 'services/services.dart';
 import 'theme.dart';
 import 'widgets.dart';
+
+/// The bundled fonts' licenses, for the Licenses page.
+void registerFontLicenses() {
+  const fonts = {'Barlow Condensed': 'BarlowCondensed', 'DM Sans': 'DMSans', 'IBM Plex Sans Arabic': 'IBMPlexSansArabic'};
+  LicenseRegistry.addLicense(() async* {
+    for (final MapEntry(key: name, value: file) in fonts.entries) {
+      yield LicenseEntryWithLineBreaks([name], await rootBundle.loadString('assets/fonts/OFL-$file.txt'));
+    }
+  });
+}
 
 class TashkeelaApp extends StatefulWidget {
   const TashkeelaApp({super.key, required this.services});
@@ -47,6 +58,14 @@ class _TashkeelaAppState extends State<TashkeelaApp> {
             supportedLocales: const [Locale('ar'), Locale('en')],
             localizationsDelegates: GlobalMaterialLocalizations.delegates,
             home: const AuthGate(),
+            builder: widget.services.isDemo
+                ? (context, child) => Banner(
+                      message: 'DEMO',
+                      location: BannerLocation.topEnd,
+                      color: Palette.amber,
+                      child: child!,
+                    )
+                : null,
           ),
         ),
       ),
@@ -64,31 +83,31 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   String? _claimedFor;
-  StreamSubscription<User?>? _sub;
-  User? _user;
+  StreamSubscription<String?>? _sub;
+  String? _uid;
   bool _ready = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _sub ??= context.services.auth.authStateChanges().listen(_onUser);
+    _sub ??= context.services.auth.uidChanges().listen(_onUser);
   }
 
-  Future<void> _onUser(User? user) async {
-    final claimed = user != null && _claimedFor == user.uid;
+  Future<void> _onUser(String? uid) async {
+    final claimed = uid != null && _claimedFor == uid;
     setState(() {
-      _user = user;
-      _ready = user == null || claimed;
+      _uid = uid;
+      _ready = uid == null || claimed;
     });
-    if (user == null || claimed) return;
+    if (uid == null || claimed) return;
     final services = context.services;
     try {
       await services.api.claimMemberships();
-      _claimedFor = user.uid;
+      _claimedFor = uid;
     } catch (e) {
       debugPrint('claimMemberships failed: $e');
     }
-    unawaited(services.push.register(user.uid));
+    unawaited(services.push.register(uid));
     if (mounted) setState(() => _ready = true);
   }
 
@@ -101,8 +120,8 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (!_ready) return const Scaffold(body: Loading());
-    final user = _user;
-    if (user == null) return const SignInScreen();
-    return GroupGate(uid: user.uid);
+    final uid = _uid;
+    if (uid == null) return const SignInScreen();
+    return GroupGate(uid: uid);
   }
 }

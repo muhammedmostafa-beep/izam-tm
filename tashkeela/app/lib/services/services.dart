@@ -1,8 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/widgets.dart';
 
 import 'api.dart';
+import 'auth.dart';
+import 'photos.dart';
 import 'push.dart';
 import 'repo.dart';
 
@@ -10,13 +10,25 @@ import 'repo.dart';
 const appUrl = String.fromEnvironment('APP_URL');
 
 class Services {
-  const Services({required this.auth, required this.api, required this.repo, required this.push, required this.storage});
+  const Services({
+    required this.auth,
+    required this.api,
+    required this.repo,
+    required this.push,
+    required this.photos,
+    this.demoPanel,
+  });
 
-  final FirebaseAuth auth;
+  final AuthService auth;
   final Api api;
   final Repo repo;
   final PushService push;
-  final FirebaseStorage storage;
+  final PhotoStore photos;
+
+  /// Only in the demo build: controls for the simulated week, shown in the Group tab.
+  final WidgetBuilder? demoPanel;
+
+  bool get isDemo => demoPanel != null;
 }
 
 class ServicesScope extends InheritedWidget {
