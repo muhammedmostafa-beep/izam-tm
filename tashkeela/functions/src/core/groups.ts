@@ -1,4 +1,5 @@
 import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
+import { KitError, normalizeKits } from "../domain/kits";
 import { parseClock } from "../domain/time";
 import { validateSchedule, WeeklySchedule } from "../domain/schedule";
 import {
@@ -14,7 +15,7 @@ import {
   Role,
 } from "../model";
 import { AppError, asAppError, invalid } from "./errors";
-import { ensureCurrentGame, gameRef, groupRef } from "./games";
+import { ACTIVE_STATUSES, ensureWeeklyGame, gameRef, groupRef, refreshCurrentGame } from "./games";
 import { normalizePhone } from "./phone";
 import { applyRosterAction } from "./roster-ops";
 import { Notice } from "../notify/notices";
@@ -107,7 +108,8 @@ export async function createGroup(
     { merge: true },
   );
   await batch.commit();
-  await ensureCurrentGame(db, ref.id, input.now);
+  await ensureWeeklyGame(db, ref.id, input.now);
+  await refreshCurrentGame(db, ref.id, input.now);
   return { groupId: ref.id };
 }
 
@@ -144,10 +146,11 @@ export function mergeSettings(group: GroupDoc, patch: SettingsPatch): Partial<Gr
     if (!int(rules.confirmWindowMinutes, 5, 24 * 60)) throw invalid("confirmWindowMinutes out of range");
     if (!int(rules.matchDayConfirmWindowMinutes, 5, 24 * 60)) throw invalid("matchDayConfirmWindowMinutes out of range");
     if (!int(rules.lateDropOutHours, 0, 168)) throw invalid("lateDropOutHours out of range");
-    if (!Array.isArray(rules.teamNames) || rules.teamNames.length < 2 || rules.teamNames.length > 6) {
-      throw invalid("teamNames must list 2 to 6 teams");
+    try {
+      rules.kits = normalizeKits(rules.kits);
+    } catch (e) {
+      throw invalid((e as KitError).message);
     }
-    rules.teamNames = rules.teamNames.map((t) => nonEmpty(t, "team name", 20));
     if (rules.quietHours !== null) {
       try {
         parseClock(rules.quietHours.start);
@@ -180,16 +183,40 @@ export async function updateSettings(
   const changes = mergeSettings(group, input.patch);
   await groupRef(db, input.groupId).update({ ...changes, updatedAt: Timestamp.fromMillis(input.now) });
 
-  // A new schedule replaces next week's game if its poll has not opened yet.
-  if (changes.schedule && group.currentGameId) {
-    const ref = gameRef(db, input.groupId, group.currentGameId);
-    const snap = await ref.get();
-    if (snap.exists && (snap.data() as GameDoc).status === "scheduled") {
-      await ref.delete();
+  const weekly = await groupRef(db, input.groupId)
+    .collection("games")
+    .where("kind", "==", "weekly")
+    .where("status", "in", ACTIVE_STATUSES)
+    .get();
+  for (const doc of weekly.docs) {
+    const game = doc.data() as GameDoc;
+    // A new schedule (or turning the weekly poll off) replaces a weekly poll that hasn't opened yet.
+    if (changes.schedule && game.status === "scheduled") {
+      await doc.ref.delete();
       await groupRef(db, input.groupId).update({ weekCounter: FieldValue.increment(-1) });
+      continue;
+    }
+    // A new place or squad size applies to this week's poll too.
+    const venue = changes.venue !== undefined && changes.venue !== group.venue ? changes.venue : undefined;
+    const squadSize =
+      changes.rules && changes.rules.squadSize !== game.squadSize ? changes.rules.squadSize : undefined;
+    if (venue === undefined && squadSize === undefined) continue;
+    await doc.ref.update({ venue: venue ?? game.venue, squadSize: squadSize ?? game.squadSize });
+    if (squadSize !== undefined && game.status === "open") {
+      // Re-sort the list: reserves move up into a bigger squad, or the last in drop to reserves.
+      await applyRosterAction(db, {
+        groupId: input.groupId,
+        gameId: doc.id,
+        memberId: null,
+        action: "expire",
+        source: "admin",
+        actorUid: input.uid,
+        now: input.now,
+      });
     }
   }
-  await ensureCurrentGame(db, input.groupId, input.now);
+  await ensureWeeklyGame(db, input.groupId, input.now);
+  await refreshCurrentGame(db, input.groupId, input.now);
 }
 
 export async function addMember(
@@ -290,21 +317,22 @@ export async function removeMember(
     throw invalid("the group needs at least one organizer");
   }
 
-  let notices: Notice[] = [];
-  if (group.currentGameId) {
+  const notices: Notice[] = [];
+  const active = await groupRef(db, input.groupId).collection("games").where("status", "in", ACTIVE_STATUSES).get();
+  for (const game of active.docs) {
     try {
       const r = await applyRosterAction(db, {
         groupId: input.groupId,
-        gameId: group.currentGameId,
+        gameId: game.id,
         memberId: input.memberId,
         action: "remove",
         source: "admin",
         actorUid: input.uid,
         now: input.now,
       });
-      notices = r.notices;
+      notices.push(...r.notices);
     } catch (e) {
-      // Not on this week's list, or the poll is closed: nothing to undo.
+      // Not on that poll's list, or it isn't open: nothing to undo.
       const code = asAppError(e)?.code;
       if (code !== "not_in" && code !== "poll_not_open" && code !== "game_closed") throw e;
     }
@@ -370,14 +398,17 @@ export async function updateMyPreferences(
 
 export async function openPollNow(
   db: Firestore,
-  input: { groupId: string; uid: string; now: number },
+  input: { groupId: string; uid: string; gameId?: string | null; now: number },
 ): Promise<{ gameId: string }> {
   const group = await loadGroup(db, input.groupId);
   requireAdmin(group, input.uid);
-  const { gameId } = await ensureCurrentGame(db, input.groupId, input.now);
+  const gameId = input.gameId || (await ensureWeeklyGame(db, input.groupId, input.now)).gameId || group.currentGameId;
+  if (!gameId) throw new AppError("not_found", "no poll to open");
   const ref = gameRef(db, input.groupId, gameId);
   await db.runTransaction(async (tx) => {
-    const game = (await tx.get(ref)).data() as GameDoc;
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new AppError("not_found", "poll not found");
+    const game = snap.data() as GameDoc;
     if (game.status !== "scheduled") throw invalid("the poll is already open");
     tx.update(ref, {
       status: "open",
@@ -395,7 +426,6 @@ export async function recordResult(
   const group = await loadGroup(db, input.groupId);
   requireAdmin(group, input.uid);
   const winner = nonEmpty(input.winner, "winner", 20);
-  if (!group.rules.teamNames.includes(winner)) throw invalid("winner must be one of the team names");
   let photoPath: string | null = null;
   if (input.photoPath !== undefined && input.photoPath !== null) {
     const expected = `groups/${input.groupId}/champions/`;
@@ -409,7 +439,11 @@ export async function recordResult(
     const snap = await tx.get(ref);
     if (!snap.exists) throw new AppError("not_found", "game not found");
     const game = snap.data() as GameDoc;
+    if (game.status === "cancelled") throw invalid("the game was cancelled");
     if (input.now < game.kickoffAt.toMillis()) throw invalid("the game has not started yet");
+    // The winners are one of the teams that played: this game's kits, or the group's.
+    const kits = game.teams?.teams.map((t) => t.kit) ?? group.rules.kits;
+    if (!kits.some((k) => k.name === winner)) throw invalid("winner must be one of the teams");
     const stamp = Timestamp.fromMillis(input.now);
     tx.update(ref, {
       status: "played",

@@ -9,15 +9,29 @@ import '../services/services.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'home_shell.dart';
+import 'poll_editor_screen.dart';
 import 'result_screen.dart';
 import 'storage_photo.dart';
+import 'teams_screen.dart';
 
 class ThisWeekTab extends StatelessWidget {
-  const ThisWeekTab({super.key, required this.view, required this.onSwitchGroup, required this.onOpenSquad});
+  const ThisWeekTab({
+    super.key,
+    required this.view,
+    required this.onSwitchGroup,
+    required this.onOpenSquad,
+    required this.onSelectGame,
+  });
 
   final GroupView view;
   final ValueChanged<String> onSwitchGroup;
   final VoidCallback onOpenSquad;
+  final ValueChanged<String> onSelectGame;
+
+  Future<void> _newPoll(BuildContext context) async {
+    final id = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => PollEditorScreen(group: view.group)));
+    if (id != null) onSelectGame(id);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,12 +39,32 @@ class ThisWeekTab extends StatelessWidget {
     final game = view.game;
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
       _Header(view: view, onSwitchGroup: onSwitchGroup),
-      const SizedBox(height: 16),
+      const SizedBox(height: 12),
+      _PollSwitcher(view: view, onSelect: onSelectGame, onNew: () => _newPoll(context)),
+      const SizedBox(height: 12),
       if (game == null)
         Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: Text(s.t('Setting up this week…', 'بنجهز ماتش الأسبوع…')),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(s.t('No poll yet', 'لسه مفيش تصويت'), style: display(24)),
+              const SizedBox(height: 6),
+              Text(
+                view.isAdmin
+                    ? s.t('Make a poll with the date, time and place, or turn on the weekly poll in Game settings.',
+                        'اعمل تصويت بالمعاد والمكان، أو شغّل التصويت الأسبوعي من إعدادات الماتش.')
+                    : s.t('The organizer will post the next one.', 'المنظم هينزل التصويت الجاي.'),
+                style: const TextStyle(color: Palette.muted),
+              ),
+              if (view.isAdmin) ...[
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: () => _newPoll(context),
+                  icon: const Icon(Icons.add),
+                  label: Text(s.t('New poll', 'تصويت جديد')),
+                ),
+              ],
+            ]),
           ),
         )
       else ...[
@@ -58,9 +92,10 @@ class ThisWeekTab extends StatelessWidget {
             style: BusyStyle.outlined,
             icon: Icons.how_to_vote_outlined,
             label: s.t('Open the poll now', 'افتح التصويت دلوقتي'),
-            onPressed: () => runAction(context, () => context.services.api.openPollNow(view.group.id)),
+            onPressed: () => runAction(context, () => context.services.api.openPollNow(view.group.id, game.id)),
           ),
         ],
+        TeamsSection(view: view, game: game),
         _Changes(view: view),
       ],
       _ChampionsCard(view: view),
@@ -153,7 +188,15 @@ class _MatchCard extends StatelessWidget {
             Row(children: [
               const Icon(Icons.place_outlined, size: 16, color: Palette.muted),
               const SizedBox(width: 4),
-              Expanded(child: Text(view.group.venue, style: const TextStyle(color: Palette.muted))),
+              Expanded(child: Text(view.venueOf(game), style: const TextStyle(color: Palette.muted))),
+              if (view.isAdmin && game.isAhead)
+                TextButton.icon(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)),
+                  onPressed: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => PollEditorScreen(group: view.group, game: game))),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: Text(s.t('Edit', 'عدّل')),
+                ),
             ]),
             // Only while the game is still ahead; a closed, played or cancelled game has nothing to count down to.
             if ((game.status == GameStatus.scheduled || game.status == GameStatus.open) && DateTime.now().isBefore(game.kickoffAt)) ...[
@@ -294,15 +337,18 @@ class _ActionArea extends StatelessWidget {
       case GameStatus.closed || GameStatus.played || GameStatus.cancelled:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(
-            game.status == GameStatus.played
-                ? s.t('Full time.', 'الماتش خلص.')
-                : s.t('The poll for this game is closed.', 'التصويت للماتش ده اتقفل.'),
+            switch (game.status) {
+              GameStatus.played => s.t('Full time.', 'الماتش خلص.'),
+              GameStatus.cancelled => s.t('This game was called off.', 'الماتش ده اتلغى.'),
+              _ => s.t('The poll for this game is closed.', 'التصويت للماتش ده اتقفل.'),
+            },
             style: const TextStyle(color: Palette.muted),
           ),
           if (view.isAdmin && game.status == GameStatus.closed) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ResultScreen(group: view.group))),
+              onPressed: () => Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => ResultScreen(group: view.group, game: game))),
               icon: const Icon(Icons.emoji_events_outlined),
               label: Text(s.t('Record the winners', 'سجّل الفريق الكسبان')),
             ),
@@ -513,6 +559,8 @@ class _ChampionsCard extends StatelessWidget {
     final s = context.s;
     final c = view.group.lastChampions;
     if (c == null) return const SizedBox.shrink();
+    final kit = view.group.rules.kits.where((k) => k.name == c.winner).firstOrNull;
+    final winner = kit?.label(s) ?? c.winner;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SectionTitle(s.t('Last champions', 'أبطال آخر ماتش')),
       Card(
@@ -523,7 +571,7 @@ class _ChampionsCard extends StatelessWidget {
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(s.t('TEAM ${c.winner.toUpperCase()}', 'فريق ${c.winner}'), style: display(24, color: Palette.lime)),
+                Text(s.t('TEAM ${winner.toUpperCase()}', 'فريق $winner'), style: display(24, color: Palette.lime)),
                 const SizedBox(height: 4),
                 Text(s.t('Week ${s.n(c.weekNumber)} champions', 'أبطال الأسبوع ${s.n(c.weekNumber)}'),
                     style: const TextStyle(color: Palette.muted)),
@@ -533,5 +581,56 @@ class _ChampionsCard extends StatelessWidget {
         ),
       ),
     ]);
+  }
+}
+
+/// The polls to pick from, earliest first, and a "New poll" button for organizers.
+class _PollSwitcher extends StatelessWidget {
+  const _PollSwitcher({required this.view, required this.onSelect, required this.onNew});
+
+  final GroupView view;
+  final ValueChanged<String> onSelect;
+  final VoidCallback onNew;
+
+  /// The day, plus the time (and the place) when another poll shares it.
+  String _label(S s, Game g, List<Game> polls) {
+    final others = polls.where((o) => o.id != g.id && DateUtils.isSameDay(o.kickoffAt.toLocal(), g.kickoffAt.toLocal()));
+    if (others.isEmpty) return s.shortDay(g.kickoffAt);
+    final label = '${s.shortDay(g.kickoffAt)}${s.sep}${s.time(g.kickoffAt)}';
+    if (!others.any((o) => o.kickoffAt == g.kickoffAt)) return label;
+    final place = view.venueOf(g);
+    return '$label${s.sep}${place.length > 14 ? '${place.substring(0, 13)}…' : place}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.s;
+    final polls = view.polls;
+    if (polls.length < 2 && !(view.isAdmin && view.game != null)) return const SizedBox.shrink();
+    return SizedBox(
+      height: 40,
+      child: ListView(scrollDirection: Axis.horizontal, children: [
+        for (final g in polls) ...[
+          ChoiceChip(
+            showCheckmark: false,
+            label: Text(_label(s, g, polls)),
+            avatar: Icon(
+              g.isAhead ? Icons.how_to_vote_outlined : Icons.check_circle_outline,
+              size: 16,
+              color: g.status == GameStatus.open ? Palette.lime : Palette.muted,
+            ),
+            selected: g.id == view.game?.id,
+            onSelected: (_) => onSelect(g.id),
+          ),
+          const SizedBox(width: 8),
+        ],
+        if (view.isAdmin)
+          ActionChip(
+            avatar: const Icon(Icons.add, size: 18),
+            label: Text(s.t('New poll', 'تصويت جديد')),
+            onPressed: onNew,
+          ),
+      ]),
+    );
   }
 }

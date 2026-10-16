@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n.dart';
+import '../levels.dart';
 import '../models.dart';
 import '../services/services.dart';
 import '../theme.dart';
@@ -94,6 +95,7 @@ class GroupTab extends StatelessWidget {
               title: Text(m.name),
               subtitle: Text(m.phone, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 12)),
               trailing: Wrap(spacing: 6, children: [
+                if (view.isAdmin) Pill(levelBadge(s, view.levelOf(m.id)), color: levelColor(view.levelOf(m.id))),
                 if (m.isGoalkeeper) Pill(s.t('GK', 'حارس'), color: Palette.sky),
                 if (m.isAdmin) Pill(s.t('Organizer', 'منظم')),
                 if (m.uid == null) Pill(s.t('No app', 'من غير تطبيق'), color: Palette.muted),
@@ -195,11 +197,32 @@ class GroupTab extends StatelessWidget {
     final isSelf = m.uid == view.uid;
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       builder: (sheet) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Text(m.name.toUpperCase(), style: display(26)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Text(s.t('Level (only organizers see this)', 'المستوى (المنظمين بس اللي بيشوفوه)'),
+                style: const TextStyle(color: Palette.muted, fontSize: 13)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final level in levels)
+                ChoiceChip(
+                  label: Text(levelLabel(s, level)),
+                  selected: view.levelOf(m.id) == level,
+                  onSelected: (_) {
+                    Navigator.of(sheet).pop();
+                    runAction(context, () => api.setMemberLevel(view.group.id, m.id, level),
+                        success: s.t('${m.name}: ${levelLabel(s, level)}', '${m.name}: ${levelLabel(s, level)}'));
+                  },
+                ),
+            ]),
           ),
           ListTile(
             leading: const Icon(Icons.sports_handball),

@@ -8,6 +8,8 @@ import { CallableRequest, HttpsError, onCall, onRequest } from "firebase-functio
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { asAppError, AppErrorCode, invalid } from "./core/errors";
 import * as groups from "./core/groups";
+import * as polls from "./core/polls";
+import * as squad from "./core/squad";
 import { applyRosterAction, RosterAction } from "./core/roster-ops";
 import { tickGroup } from "./core/tick";
 import { dispatch, Senders } from "./notify/dispatch";
@@ -185,7 +187,8 @@ export const adminRosterAction = callable(async (req, a) => {
 
 export const openPollNow = callable(async (req, a) => {
   const groupId = str(req.data?.groupId, "groupId");
-  const r = await groups.openPollNow(db, { groupId, uid: a.uid, now: Date.now() });
+  const gameId = typeof req.data?.gameId === "string" ? req.data.gameId : null;
+  const r = await groups.openPollNow(db, { groupId, uid: a.uid, gameId, now: Date.now() });
   await dispatch(db, await tickGroup(db, groupId, Date.now()), senders());
   return r;
 });
@@ -197,6 +200,68 @@ export const recordResult = callable((req, a) =>
     gameId: str(req.data?.gameId, "gameId"),
     winner: req.data?.winner,
     photoPath: req.data?.photoPath,
+    now: Date.now(),
+  }),
+);
+
+// --- Polls the organizer makes ------------------------------------------------
+
+const pollFields = (d: Record<string, unknown> | undefined) => ({
+  kickoffAt: d?.kickoffAt,
+  durationMinutes: d?.durationMinutes,
+  venue: d?.venue,
+  squadSize: d?.squadSize,
+  pollOpensAt: d?.pollOpensAt,
+});
+
+export const createPoll = callable(async (req, a) => {
+  const groupId = str(req.data?.groupId, "groupId");
+  const r = await polls.createPoll(db, { ...pollFields(req.data), groupId, uid: a.uid, now: Date.now() });
+  // Opens at once if voting starts now, and tells everyone.
+  await dispatch(db, await tickGroup(db, groupId, Date.now()), senders());
+  return r;
+});
+
+export const updatePoll = callable(async (req, a) => {
+  const groupId = str(req.data?.groupId, "groupId");
+  const notices = await polls.updatePoll(db, {
+    ...pollFields(req.data),
+    groupId,
+    uid: a.uid,
+    gameId: str(req.data?.gameId, "gameId"),
+    now: Date.now(),
+  });
+  await dispatch(db, [...notices, ...(await tickGroup(db, groupId, Date.now()))], senders());
+});
+
+export const cancelPoll = callable(async (req, a) => {
+  const notices = await polls.cancelPoll(db, {
+    groupId: str(req.data?.groupId, "groupId"),
+    uid: a.uid,
+    gameId: str(req.data?.gameId, "gameId"),
+    now: Date.now(),
+  });
+  await dispatch(db, notices, senders());
+});
+
+// --- Levels and teams (organizers) ---------------------------------------------
+
+export const setMemberLevel = callable((req, a) =>
+  squad.setMemberLevel(db, {
+    groupId: str(req.data?.groupId, "groupId"),
+    uid: a.uid,
+    memberId: str(req.data?.memberId, "memberId"),
+    level: req.data?.level,
+    now: Date.now(),
+  }),
+);
+
+export const saveTeams = callable((req, a) =>
+  squad.saveTeams(db, {
+    groupId: str(req.data?.groupId, "groupId"),
+    uid: a.uid,
+    gameId: str(req.data?.gameId, "gameId"),
+    teams: req.data?.teams ?? null,
     now: Date.now(),
   }),
 );

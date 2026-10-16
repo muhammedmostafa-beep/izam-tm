@@ -29,6 +29,7 @@ beforeEach(async () => {
     await setDoc(doc(db, "groups/g1/games/2026-10-22"), { status: "open" });
     await setDoc(doc(db, "groups/g1/games/2026-10-22/entries/m1"), { state: "confirmed", seq: 1 });
     await setDoc(doc(db, "users/alice"), { phone: "+20100", groupIds: ["g1"], pushIds: [] });
+    await setDoc(doc(db, "groups/g1/private/levels"), { levels: { m1: 2 } });
   });
 });
 
@@ -40,6 +41,8 @@ describe("security rules", () => {
   it("lets members read their group, its games and the list", async () => {
     const db = env.authenticatedContext("alice").firestore();
     await assertSucceeds(getDoc(doc(db, "groups/g1")));
+    await assertSucceeds(getDoc(doc(db, "groups/g1/games/2026-10-22")));
+    await assertSucceeds(getDoc(doc(db, "groups/g1/members/m1")));
     await assertSucceeds(getDocs(collection(db, "groups/g1/members")));
     await assertSucceeds(getDocs(collection(db, "groups/g1/games/2026-10-22/entries")));
   });
@@ -60,6 +63,13 @@ describe("security rules", () => {
       await assertFails(deleteDoc(doc(db, "groups/g1/games/2026-10-22/entries/m1")));
       await assertFails(updateDoc(doc(db, "groups/g1"), { adminUids: [uid] }));
     }
+  });
+
+  it("shows players' levels to organizers only", async () => {
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("org").firestore(), "groups/g1/private/levels")));
+    await assertFails(getDoc(doc(env.authenticatedContext("alice").firestore(), "groups/g1/private/levels")));
+    await assertFails(getDoc(doc(env.authenticatedContext("mallory").firestore(), "groups/g1/private/levels")));
+    await assertFails(setDoc(doc(env.authenticatedContext("org").firestore(), "groups/g1/private/levels"), { levels: { m1: 1 } }));
   });
 
   it("lets people manage only their own push IDs and language", async () => {

@@ -43,6 +43,7 @@ describe("weekly schedule", () => {
     matchDurationMinutes: 90,
     pollOpenWeekday: 7,
     pollOpenTime: "12:00",
+    enabled: true,
   };
   const at = (iso: string) => Date.parse(iso);
 

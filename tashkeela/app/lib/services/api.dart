@@ -2,6 +2,8 @@
 
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../models.dart';
+
 /// Must match `setGlobalOptions({ region })` in functions/src/index.ts.
 const functionsRegion = 'europe-west1';
 
@@ -39,9 +41,51 @@ abstract interface class Api {
   /// Organizer only. action: join (add someone) or remove.
   Future<void> adminRosterAction(String groupId, String gameId, String memberId, String action);
 
-  Future<void> openPollNow(String groupId);
+  Future<void> openPollNow(String groupId, String gameId);
 
   Future<void> recordResult(String groupId, String gameId, {required String winner, String? photoPath});
+
+  /// Organizer only. A poll of its own: when, where, how many, and when voting opens (null: now).
+  Future<String> createPoll(String groupId, PollDraft poll);
+
+  /// Organizer only. Changes a poll that hasn't been played yet.
+  Future<void> updatePoll(String groupId, String gameId, PollDraft poll);
+
+  /// Organizer only. Calls the game off and tells everyone on its list.
+  Future<void> cancelPoll(String groupId, String gameId);
+
+  /// Organizer only. 0 (new / not sure) to 4; see levels.dart.
+  Future<void> setMemberLevel(String groupId, String memberId, int level);
+
+  /// Organizer only. Saves the game's teams, or clears them with null.
+  Future<void> saveTeams(String groupId, String gameId, List<Team>? teams);
+}
+
+/// What the organizer fills in for a poll.
+class PollDraft {
+  const PollDraft({
+    required this.kickoffAt,
+    required this.durationMinutes,
+    required this.venue,
+    required this.squadSize,
+    this.pollOpensAt,
+  });
+
+  final DateTime kickoffAt;
+  final int durationMinutes;
+  final String venue;
+  final int squadSize;
+
+  /// Null: voting opens right away.
+  final DateTime? pollOpensAt;
+
+  Map<String, Object?> toMap() => {
+        'kickoffAt': kickoffAt.millisecondsSinceEpoch,
+        'durationMinutes': durationMinutes,
+        'venue': venue,
+        'squadSize': squadSize,
+        'pollOpensAt': pollOpensAt?.millisecondsSinceEpoch,
+      };
 }
 
 class FirebaseApi implements Api {
@@ -119,9 +163,31 @@ class FirebaseApi implements Api {
       _call('adminRosterAction', {'groupId': groupId, 'gameId': gameId, 'memberId': memberId, 'action': action});
 
   @override
-  Future<void> openPollNow(String groupId) => _call('openPollNow', {'groupId': groupId});
+  Future<void> openPollNow(String groupId, String gameId) => _call('openPollNow', {'groupId': groupId, 'gameId': gameId});
 
   @override
   Future<void> recordResult(String groupId, String gameId, {required String winner, String? photoPath}) =>
       _call('recordResult', {'groupId': groupId, 'gameId': gameId, 'winner': winner, 'photoPath': photoPath});
+
+  @override
+  Future<String> createPoll(String groupId, PollDraft poll) async =>
+      (await _call('createPoll', {'groupId': groupId, ...poll.toMap()}))['gameId'] as String;
+
+  @override
+  Future<void> updatePoll(String groupId, String gameId, PollDraft poll) =>
+      _call('updatePoll', {'groupId': groupId, 'gameId': gameId, ...poll.toMap()});
+
+  @override
+  Future<void> cancelPoll(String groupId, String gameId) => _call('cancelPoll', {'groupId': groupId, 'gameId': gameId});
+
+  @override
+  Future<void> setMemberLevel(String groupId, String memberId, int level) =>
+      _call('setMemberLevel', {'groupId': groupId, 'memberId': memberId, 'level': level});
+
+  @override
+  Future<void> saveTeams(String groupId, String gameId, List<Team>? teams) => _call('saveTeams', {
+        'groupId': groupId,
+        'gameId': gameId,
+        'teams': teams?.map((t) => t.toMap()).toList(),
+      });
 }

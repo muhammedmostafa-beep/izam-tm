@@ -12,21 +12,29 @@ import '../models.dart';
 import '../services/services.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'kit_picker.dart';
 
 /// After the game: pick the winners, frame their photo as the group icon,
 /// save it and share it to the WhatsApp group.
 class ResultScreen extends StatefulWidget {
-  const ResultScreen({super.key, required this.group});
+  const ResultScreen({super.key, required this.group, this.game});
 
   final Group group;
+
+  /// The game to record; null for the latest one played.
+  final Game? game;
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
 }
 
 class _ResultScreenState extends State<ResultScreen> {
-  late final Future<Game?> _game = context.services.repo.lastPlayedGame(widget.group.id);
-  late String _winner = widget.group.rules.teamNames.first;
+  late final Future<Game?> _game =
+      widget.game != null ? Future.value(widget.game) : context.services.repo.lastPlayedGame(widget.group.id);
+  Kit? _winner;
+
+  /// The teams that played: this game's kits, or the group's.
+  List<Kit> _kitsOf(Game game) => game.teams?.map((t) => t.kit).toList() ?? widget.group.rules.kits;
   Uint8List? _icon;
   ui.Image? _photo;
 
@@ -40,7 +48,7 @@ class _ResultScreenState extends State<ResultScreen> {
   Future<void> _render(int week) async {
     final photo = _photo;
     if (photo == null) return;
-    final icon = await renderChampionsIcon(photo: photo, ringText: championsRing(week: week, winner: _winner));
+    final icon = await renderChampionsIcon(photo: photo, ringText: championsRing(week: week, winner: _winner!.latinName));
     if (mounted) setState(() => _icon = icon);
   }
 
@@ -54,11 +62,11 @@ class _ResultScreenState extends State<ResultScreen> {
         path = 'groups/${widget.group.id}/champions/${game.id}.png';
         await services.photos.putPng(path!, icon);
       }
-      await services.api.recordResult(widget.group.id, game.id, winner: _winner, photoPath: path);
+      await services.api.recordResult(widget.group.id, game.id, winner: _winner!.name, photoPath: path);
       return true;
     });
     if (saved != true || !mounted) return;
-    final caption = championsCaption(s: s, group: widget.group, week: game.weekNumber, winner: _winner);
+    final caption = championsCaption(s: s, group: widget.group, week: game.weekNumber, winner: _winner!.label(s));
     await SharePlus.instance.share(ShareParams(
       text: caption,
       files: icon == null ? null : [XFile.fromData(icon, mimeType: 'image/png', name: 'champions-week-${game.weekNumber}.png')],
@@ -70,7 +78,6 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.s;
-    final teams = widget.group.rules.teamNames;
     return Scaffold(
       appBar: AppBar(title: Text(s.t('RESULT', 'النتيجة'))),
       body: FutureBuilder<Game?>(
@@ -81,19 +88,21 @@ class _ResultScreenState extends State<ResultScreen> {
           if (game == null) {
             return Message(icon: Icons.sports_soccer, title: s.t('No game played yet', 'لسه مفيش ماتش اتلعب'));
           }
+          final kits = _kitsOf(game);
+          _winner ??= kits.first;
           return ListView(padding: const EdgeInsets.all(16), children: [
             Text(s.t('WHO WON?', 'مين كسب؟'), style: display(32)),
             Text(s.t('Week ${s.n(game.weekNumber)}${s.sep}${s.day(game.kickoffAt)}', 'الأسبوع ${s.n(game.weekNumber)}${s.sep}${s.day(game.kickoffAt)}'),
                 style: const TextStyle(color: Palette.muted)),
             const SizedBox(height: 16),
             Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final (i, team) in teams.indexed)
+              for (final kit in kits)
                 ChoiceChip(
-                  label: Text(team),
-                  selected: _winner == team,
-                  avatar: CircleAvatar(backgroundColor: Palette.bibs[i % Palette.bibs.length]),
+                  label: Text(kit.label(s)),
+                  selected: _winner == kit,
+                  avatar: KitDot(kit),
                   onSelected: (_) {
-                    setState(() => _winner = team);
+                    setState(() => _winner = kit);
                     _render(game.weekNumber);
                   },
                 ),

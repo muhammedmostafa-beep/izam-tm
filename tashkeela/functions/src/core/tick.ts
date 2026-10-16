@@ -2,20 +2,38 @@ import { Firestore, Timestamp } from "firebase-admin/firestore";
 import { HOUR } from "../domain/time";
 import { GameDoc, GroupDoc } from "../model";
 import { Notice } from "../notify/notices";
-import { ensureCurrentGame, gameRef, groupRef } from "./games";
+import { ACTIVE_STATUSES, ensureWeeklyGame, gameRef, groupRef, refreshCurrentGame } from "./games";
 import { applyRosterAction } from "./roster-ops";
 
 /**
- * One scheduler pass for a group: create this week's game, open the poll on
- * time, close it at kick-off, send the match-day reminder once, and move
- * expired offers down the reserve queue. Costs two reads when nothing is due.
+ * One scheduler pass for a group: create this week's poll, then for every
+ * poll still ahead open it on time, send the match-day reminder once, close
+ * it at kick-off and move expired offers down the reserve queue.
  */
 export async function tickGroup(db: Firestore, groupId: string, now: number): Promise<Notice[]> {
-  const { gameId } = await ensureCurrentGame(db, groupId, now);
+  const weekly = await ensureWeeklyGame(db, groupId, now);
+  const active = await groupRef(db, groupId).collection("games").where("status", "in", ACTIVE_STATUSES).get();
+  const notices: Notice[] = [];
+  let changed = weekly.created;
+  for (const doc of active.docs) {
+    const r = await tickGame(db, groupId, doc.id, now);
+    notices.push(...r.notices);
+    changed ||= r.statusChanged;
+  }
+  if (changed) await refreshCurrentGame(db, groupId, now);
+  return notices;
+}
+
+async function tickGame(
+  db: Firestore,
+  groupId: string,
+  gameId: string,
+  now: number,
+): Promise<{ notices: Notice[]; statusChanged: boolean }> {
   const ref = gameRef(db, groupId, gameId);
   const notices: Notice[] = [];
 
-  const game = await db.runTransaction(async (tx) => {
+  const { game, statusChanged } = await db.runTransaction(async (tx) => {
     const [gSnap, snap] = await tx.getAll(groupRef(db, groupId), ref);
     const group = gSnap.data() as GroupDoc;
     const game = snap.data() as GameDoc;
@@ -33,13 +51,13 @@ export async function tickGroup(db: Firestore, groupId: string, now: number): Pr
       updates.matchDayReminderSent = true;
       notices.push({ kind: "match_day", groupId, gameId });
     }
-    if (status === "open" && now >= kickoff) status = "closed";
+    if ((status === "open" || status === "scheduled") && now >= kickoff) status = "closed";
 
     if (status !== game.status) updates.status = status;
     if (Object.keys(updates).length) {
       tx.update(ref, { ...updates, updatedAt: Timestamp.fromMillis(now) });
     }
-    return { ...game, ...updates };
+    return { game: { ...game, ...updates }, statusChanged: status !== game.status };
   });
 
   const live = game.status === "open" || game.status === "closed";
@@ -55,5 +73,5 @@ export async function tickGroup(db: Firestore, groupId: string, now: number): Pr
     });
     notices.push(...r.notices);
   }
-  return notices;
+  return { notices, statusChanged };
 }

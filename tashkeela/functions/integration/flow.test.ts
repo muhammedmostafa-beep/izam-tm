@@ -5,6 +5,8 @@ import { initializeApp } from "firebase-admin/app";
 import { Firestore, getFirestore } from "firebase-admin/firestore";
 import { AppError } from "../src/core/errors";
 import * as groups from "../src/core/groups";
+import * as polls from "../src/core/polls";
+import * as squad from "../src/core/squad";
 import { applyRosterAction } from "../src/core/roster-ops";
 import { tickGroup } from "../src/core/tick";
 import { RosterError } from "../src/domain/roster";
@@ -182,14 +184,139 @@ describe("a week with the group", () => {
 
   it("records the champions only after kick-off, by an organizer", async () => {
     const { groupId } = await setupGroup(0);
-    const input = { groupId, uid: "org", gameId: GAME, winner: "Lime", photoPath: `groups/${groupId}/champions/${GAME}.jpg` };
+    const input = { groupId, uid: "org", gameId: GAME, winner: "Red", photoPath: `groups/${groupId}/champions/${GAME}.jpg` };
     await assert.rejects(groups.recordResult(db, { ...input, now: at("2026-10-22T17:00:00Z") }), (e: AppError) => e.code === "invalid");
     await assert.rejects(groups.recordResult(db, { ...input, uid: "someone", now: at("2026-10-22T20:00:00Z") }), (e: AppError) => e.code === "permission_denied");
     await assert.rejects(groups.recordResult(db, { ...input, winner: "Purple", now: at("2026-10-22T20:00:00Z") }), (e: AppError) => e.code === "invalid");
     await groups.recordResult(db, { ...input, now: at("2026-10-22T20:00:00Z") });
     const group = (await db.doc(`groups/${groupId}`).get()).data() as GroupDoc;
-    assert.deepEqual(group.lastChampions, { gameId: GAME, weekNumber: 1, winner: "Lime", photoPath: input.photoPath });
+    assert.deepEqual(group.lastChampions, { gameId: GAME, weekNumber: 1, winner: "Red", photoPath: input.photoPath });
     assert.equal((await gameDoc(groupId)).status, "played");
+  });
+});
+
+describe("polls the organizer makes", () => {
+  const SATURDAY_8PM = at("2026-10-24T17:00:00Z");
+
+  it("adds a poll with its own date, place and squad size next to the weekly one", async () => {
+    const { groupId, ids } = await setupGroup(3);
+    const { gameId } = await polls.createPoll(db, {
+      groupId,
+      uid: "org",
+      kickoffAt: SATURDAY_8PM,
+      venue: "Zayed Club, pitch 2",
+      squadSize: 2,
+      pollOpensAt: at("2026-10-19T09:00:00Z"),
+      now: SUNDAY_11AM,
+    });
+    const game = (await db.doc(`groups/${groupId}/games/${gameId}`).get()).data() as GameDoc;
+    assert.equal(game.kind, "custom");
+    assert.equal(game.venue, "Zayed Club, pitch 2");
+    assert.equal(game.status, "scheduled");
+    assert.equal(game.weekNumber, 2);
+    // The app still opens on the earlier, weekly game.
+    assert.equal(((await db.doc(`groups/${groupId}`).get()).data() as GroupDoc).currentGameId, GAME);
+
+    const notices = await tickGroup(db, groupId, at("2026-10-19T09:00:00Z"));
+    assert.ok(notices.some((n) => n.kind === "poll_open" && n.gameId === gameId));
+    for (const [i, id] of ids.entries()) {
+      await applyRosterAction(db, { groupId, gameId, memberId: id, action: "join", source: "app", actorUid: null, now: at("2026-10-19T09:01:00Z") + i });
+    }
+    const third = () => db.doc(`groups/${groupId}/games/${gameId}/entries/${ids[2]}`).get().then((d) => (d.data() as EntryDoc).state);
+    assert.equal(await third(), "waiting");
+
+    // A bigger squad offers the reserve a spot.
+    const changed = await polls.updatePoll(db, { groupId, uid: "org", gameId, squadSize: 3, now: at("2026-10-19T10:00:00Z") });
+    assert.deepEqual(changed.map((n) => n.kind), ["offered"]);
+    assert.equal(await third(), "offered");
+  });
+
+  it("tells the people on the list when a poll moves or is called off", async () => {
+    const { groupId, ids } = await setupGroup(1);
+    const { gameId } = await polls.createPoll(db, { groupId, uid: "org", kickoffAt: SATURDAY_8PM, now: SUNDAY_11AM });
+    assert.equal(((await db.doc(`groups/${groupId}/games/${gameId}`).get()).data() as GameDoc).status, "open");
+    await applyRosterAction(db, { groupId, gameId, memberId: ids[0], action: "join", source: "app", actorUid: null, now: SUNDAY_11AM });
+
+    const moved = await polls.updatePoll(db, { groupId, uid: "org", gameId, kickoffAt: SATURDAY_8PM + 3600_000, venue: "Pitch 5", now: SUNDAY_11AM });
+    assert.deepEqual(moved, [{ kind: "poll_changed", groupId, gameId }]);
+
+    const whatsapp = new FakeWhatsApp();
+    const push = new FakePush();
+    await groups.claimMemberships(db, { uid: "u1", phone: phoneOf(1) });
+    await db.doc("users/u1").set({ pushIds: ["id-1"] }, { merge: true });
+    const cancelled = await polls.cancelPoll(db, { groupId, uid: "org", gameId, now: SUNDAY_11AM });
+    await dispatch(db, cancelled, { push, whatsapp });
+    assert.equal(push.sent.length, 1);
+    assert.match(push.sent[0].message.title, /called off|اتلغى/);
+    assert.equal(((await db.doc(`groups/${groupId}/games/${gameId}`).get()).data() as GameDoc).status, "cancelled");
+    await assert.rejects(
+      applyRosterAction(db, { groupId, gameId, memberId: ids[0], action: "drop", source: "app", actorUid: null, now: SUNDAY_11AM }),
+      (e: AppError) => e.code === "game_closed",
+    );
+  });
+
+  it("refuses polls in the past, voting that opens after kick-off, and non-organizers", async () => {
+    const { groupId } = await setupGroup(0);
+    const base = { groupId, uid: "org", now: SUNDAY_11AM };
+    await assert.rejects(polls.createPoll(db, { ...base, kickoffAt: SUNDAY_11AM - 1000 }), (e: AppError) => e.code === "invalid");
+    await assert.rejects(polls.createPoll(db, { ...base, kickoffAt: SATURDAY_8PM, pollOpensAt: SATURDAY_8PM }), (e: AppError) => e.code === "invalid");
+    await assert.rejects(polls.createPoll(db, { ...base, kickoffAt: SATURDAY_8PM, venue: " " }), (e: AppError) => e.code === "invalid");
+    await assert.rejects(polls.createPoll(db, { ...base, uid: "someone", kickoffAt: SATURDAY_8PM }), (e: AppError) => e.code === "permission_denied");
+  });
+
+  it("stops the weekly poll when it's turned off", async () => {
+    const { groupId } = await setupGroup(0);
+    await groups.updateSettings(db, { groupId, uid: "org", patch: { schedule: { enabled: false } }, now: SUNDAY_11AM });
+    assert.equal((await db.doc(`groups/${groupId}/games/${GAME}`).get()).exists, false);
+    await tickGroup(db, groupId, at("2026-10-25T09:00:00Z"));
+    assert.equal((await db.collection(`groups/${groupId}/games`).get()).size, 0);
+    assert.equal(((await db.doc(`groups/${groupId}`).get()).data() as GroupDoc).currentGameId, null);
+  });
+});
+
+describe("levels and teams", () => {
+  it("lets organizers rate players from 0 (new) to 4", async () => {
+    const { groupId, ids } = await setupGroup(2);
+    await squad.setMemberLevel(db, { groupId, uid: "org", memberId: ids[0], level: 1, now: SUNDAY_11AM });
+    await squad.setMemberLevel(db, { groupId, uid: "org", memberId: ids[1], level: 0, now: SUNDAY_11AM });
+    const levels = (await squad.levelsRef(db, groupId).get()).data();
+    assert.deepEqual(levels?.levels, { [ids[0]]: 1, [ids[1]]: 0 });
+    const base = { groupId, uid: "org", memberId: ids[0], now: SUNDAY_11AM };
+    await assert.rejects(squad.setMemberLevel(db, { ...base, level: 5 }), (e: AppError) => e.code === "invalid");
+    await assert.rejects(squad.setMemberLevel(db, { ...base, level: 1.5 }), (e: AppError) => e.code === "invalid");
+    await assert.rejects(squad.setMemberLevel(db, { ...base, uid: "someone", level: 2 }), (e: AppError) => e.code === "permission_denied");
+  });
+
+  it("saves teams in their kits, and the winners must be one of them", async () => {
+    const { groupId, ids } = await setupGroup(4);
+    const blue = { color: "other", name: "Blue", hex: "#1e88e5" };
+    const teams = [
+      { kit: { color: "red" }, memberIds: [ids[0], ids[1]] },
+      { kit: blue, memberIds: [ids[2], ids[3]] },
+    ];
+    await squad.saveTeams(db, { groupId, uid: "org", gameId: GAME, teams, now: SUNDAY_11AM });
+    const saved = (await gameDoc(groupId)).teams!;
+    assert.deepEqual(saved.teams.map((t) => t.kit.name), ["Red", "Blue"]);
+    assert.equal(saved.teams[1].kit.hex, "#1E88E5");
+    assert.equal(saved.updatedBy, "org");
+
+    const twice = [teams[0], { kit: blue, memberIds: [ids[0]] }];
+    await assert.rejects(squad.saveTeams(db, { groupId, uid: "org", gameId: GAME, teams: twice, now: SUNDAY_11AM }), (e: AppError) => e.code === "invalid");
+    await assert.rejects(squad.saveTeams(db, { groupId, uid: "x", gameId: GAME, teams, now: SUNDAY_11AM }), (e: AppError) => e.code === "permission_denied");
+
+    const result = { groupId, uid: "org", gameId: GAME, now: at("2026-10-22T20:00:00Z") };
+    await assert.rejects(groups.recordResult(db, { ...result, winner: "White" }), (e: AppError) => e.code === "invalid");
+    await groups.recordResult(db, { ...result, winner: "Blue" });
+    assert.equal((await gameDoc(groupId)).result?.winner, "Blue");
+  });
+
+  it("checks kits in the group settings", async () => {
+    const { groupId } = await setupGroup(0);
+    const patch = (kits: unknown[]) => ({ groupId, uid: "org", patch: { rules: { kits } as never }, now: SUNDAY_11AM });
+    await groups.updateSettings(db, patch([{ color: "white" }, { color: "other", name: "Sky", hex: "#4FC3F7" }]));
+    const group = (await db.doc(`groups/${groupId}`).get()).data() as GroupDoc;
+    assert.deepEqual(group.rules.kits.map((k) => k.name), ["White", "Sky"]);
+    await assert.rejects(groups.updateSettings(db, patch([{ color: "white" }, { color: "other", name: "Sky" }])), (e: AppError) => e.code === "invalid");
   });
 });
 

@@ -16,6 +16,8 @@ export interface WeeklySchedule {
   matchDurationMinutes: number;
   pollOpenWeekday: number; // ISO 1-7
   pollOpenTime: string; // "HH:mm"
+  /** Off: no weekly poll is posted; organizers make each poll themselves. */
+  enabled: boolean;
 }
 
 /**
@@ -66,5 +68,6 @@ export function validateSchedule(s: WeeklySchedule): string | null {
   if (!(s.matchDurationMinutes >= 30 && s.matchDurationMinutes <= 300)) {
     return "matchDurationMinutes must be between 30 and 300";
   }
+  if (typeof s.enabled !== "boolean") return "enabled must be true or false";
   return null;
 }

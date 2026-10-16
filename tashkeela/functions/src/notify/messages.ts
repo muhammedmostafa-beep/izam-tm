@@ -57,6 +57,18 @@ export const pushText = {
       { title: "انتهى وقت التأكيد", body: "المكان راح للاحتياطي اللي بعدك. تقدر تدخل الطابور تاني." },
       { title: "Your offer expired", body: "The spot went to the next reserve. You can rejoin the queue." },
     ),
+  pollChanged: (lang: Language, p: { when: string; venue: string }): PushText =>
+    pick(
+      lang,
+      { title: "الماتش اتغير", body: `المعاد الجديد ${p.when} في ${p.venue}. مكانك في القائمة زي ما هو.` },
+      { title: "Game details changed", body: `Now ${p.when} at ${p.venue}. Your place on the list stays.` },
+    ),
+  pollCancelled: (lang: Language, p: { when: string }): PushText =>
+    pick(
+      lang,
+      { title: "الماتش اتلغى", body: `ماتش ${p.when} اتلغى. هنبلغك بالماتش الجاي.` },
+      { title: "Game called off", body: `The game on ${p.when} is cancelled. We'll let you know about the next one.` },
+    ),
   matchDay: (lang: Language, p: { time: string; venue: string }): PushText =>
     pick(
       lang,

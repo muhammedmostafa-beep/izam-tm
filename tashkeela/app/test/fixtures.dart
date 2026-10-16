@@ -20,7 +20,7 @@ const tnf = Group(
   ),
   rules: Rules(
     squadSize: 18,
-    teamNames: ['Lime', 'Orange', 'Sky'],
+    kits: Kit.base,
     confirmWindowMinutes: 120,
     matchDayConfirmWindowMinutes: 30,
     lateDropOutHours: 24,

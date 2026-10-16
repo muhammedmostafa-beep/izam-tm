@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/services.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'kit_picker.dart';
 
 /// Organizer only: when the game is, how the poll works, which reminders go out.
 class SettingsScreen extends StatefulWidget {
@@ -19,7 +20,8 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late final _name = TextEditingController(text: widget.group.name);
   late final _venue = TextEditingController(text: widget.group.venue);
-  late final _teams = TextEditingController(text: widget.group.rules.teamNames.join(', '));
+  late List<Kit> _kits = [...widget.group.rules.kits];
+  late bool _weekly = widget.group.schedule.enabled;
   late final _fee = TextEditingController(text: widget.group.pitchFee?.toString() ?? '');
   late int _matchDay = widget.group.schedule.matchWeekday;
   late String _matchTime = widget.group.schedule.matchTime;
@@ -42,7 +44,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _name.dispose();
     _venue.dispose();
-    _teams.dispose();
     _fee.dispose();
     super.dispose();
   }
@@ -57,10 +58,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'matchDurationMinutes': _duration,
           'pollOpenWeekday': _pollDay,
           'pollOpenTime': _pollTime,
+          'enabled': _weekly,
         },
         'rules': {
           'squadSize': _squadSize,
-          'teamNames': _teams.text.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
+          'kits': [for (final k in _kits) k.toMap()],
           'confirmWindowMinutes': _window,
           'matchDayConfirmWindowMinutes': _matchDayWindow,
           'lateDropOutHours': _lateHours,
@@ -152,8 +154,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
 
         SectionTitle(s.t('Poll', 'التصويت')),
-        weekdayField(s.t('Poll opens on', 'التصويت يفتح يوم'), _pollDay, (v) => _pollDay = v),
-        timeTile(s.t('Poll opens at', 'التصويت يفتح الساعة'), _pollTime, (v) => _pollTime = v),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _weekly,
+          onChanged: (v) => setState(() => _weekly = v),
+          title: Text(s.t('Post the poll every week', 'نزّل التصويت كل أسبوع')),
+          subtitle: Text(_weekly
+              ? s.t('On the day and time below. You can still add extra polls.', 'في اليوم والمعاد اللي تحت. وتقدر تضيف تصويتات زيادة.')
+              : s.t('Off: you make each poll yourself from the Polls tab.', 'مقفول: إنت بتعمل كل تصويت بنفسك من صفحة الماتشات.')),
+        ),
+        if (_weekly) ...[
+          weekdayField(s.t('Poll opens on', 'التصويت يفتح يوم'), _pollDay, (v) => _pollDay = v),
+          timeTile(s.t('Poll opens at', 'التصويت يفتح الساعة'), _pollTime, (v) => _pollTime = v),
+        ],
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(s.t('Squad size', 'عدد اللعيبة')),
@@ -171,13 +184,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ]),
         ),
-        TextField(
-          controller: _teams,
-          decoration: InputDecoration(
-            labelText: s.t('Team names (bib colours), comma-separated', 'أسماء الفرق (ألوان الفانلات)، بينهم فاصلة'),
-          ),
+        SectionTitle(s.t('Team kits', 'ألوان الفرق')),
+        Text(
+          s.t('The colors your teams play in: red, black and white, or any other color you name.',
+              'ألوان الفانلات اللي الفرق بتلعب بيها: أحمر وأسود وأبيض، أو أي لون تاني تسميه.'),
+          style: const TextStyle(color: Palette.muted, fontSize: 13),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final (i, kit) in _kits.indexed)
+            InputChip(
+              avatar: KitDot(kit),
+              label: Text(kit.label(s)),
+              onPressed: () async {
+                final taken = {for (final (j, k) in _kits.indexed) if (j != i) k.name.toLowerCase()};
+                final picked = await pickKit(context, current: kit, taken: taken);
+                if (picked != null) setState(() => _kits[i] = picked);
+              },
+              onDeleted: _kits.length > 2 ? () => setState(() => _kits = [..._kits]..removeAt(i)) : null,
+              deleteButtonTooltipMessage: s.t('Remove', 'شيل'),
+            ),
+          if (_kits.length < 6)
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 18),
+              label: Text(s.t('Add a kit', 'ضيف لون')),
+              onPressed: () async {
+                final picked = await pickKit(context, taken: {for (final k in _kits) k.name.toLowerCase()});
+                if (picked != null) setState(() => _kits = [..._kits, picked]);
+              },
+            ),
+        ]),
+
+        SectionTitle(s.t('Reserves', 'الاحتياطي')),
         choice(s.t('Reserve has to confirm within', 'الاحتياطي يأكد خلال'), _window, const [30, 60, 120, 180, 240], minutes,
             (v) => _window = v),
         const SizedBox(height: 12),

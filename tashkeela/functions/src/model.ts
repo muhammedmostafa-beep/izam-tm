@@ -2,18 +2,24 @@
 //
 // groups/{groupId}                         GroupDoc
 // groups/{groupId}/members/{memberId}      MemberDoc
-// groups/{groupId}/games/{gameId}          GameDoc   (gameId = local kick-off date)
+// groups/{groupId}/games/{gameId}          GameDoc   (a poll; weekly ones are keyed by
+//                                                     their local kick-off date, others get an auto ID)
 // groups/{groupId}/games/{gameId}/entries/{memberId}   EntryDoc
 // groups/{groupId}/games/{gameId}/log/{id} LogDoc    (every vote, for disputes)
+// groups/{groupId}/private/levels          LevelsDoc (organizers only)
 // users/{uid}                              UserDoc
 
 import { Timestamp } from "firebase-admin/firestore";
+import { DEFAULT_KITS, Kit } from "./domain/kits";
 import { Entry, EntryState, OutReason, QuietHours, RosterRules, Source } from "./domain/roster";
 import { WeeklySchedule } from "./domain/schedule";
+import { Team } from "./domain/teams";
 
 export interface GroupRules {
+  /** Squad size for new polls. */
   squadSize: number;
-  teamNames: string[];
+  /** The kits teams play in, e.g. red, black and white. */
+  kits: Kit[];
   confirmWindowMinutes: number;
   matchDayConfirmWindowMinutes: number;
   lateDropOutHours: number;
@@ -68,6 +74,15 @@ export interface MemberDoc {
 
 export type GameStatus = "scheduled" | "open" | "closed" | "played" | "cancelled";
 
+/** "weekly" polls come from the group's schedule; "custom" ones an organizer made. */
+export type GameKind = "weekly" | "custom";
+
+export interface TeamsDoc {
+  teams: Team[];
+  updatedAt: Timestamp;
+  updatedBy: string;
+}
+
 export interface GameResult {
   winner: string;
   photoPath: string | null;
@@ -76,8 +91,12 @@ export interface GameResult {
 }
 
 export interface GameDoc {
+  kind: GameKind;
+  /** Running number of the group's games, shown as "Week 12". */
   weekNumber: number;
   kickoffAt: Timestamp;
+  durationMinutes: number;
+  venue: string;
   pollOpensAt: Timestamp;
   status: GameStatus;
   nextSeq: number;
@@ -88,7 +107,21 @@ export interface GameDoc {
   pollOpenNotified: boolean;
   matchDayReminderSent: boolean;
   result: GameResult | null;
+  teams: TeamsDoc | null;
+  /** Who made a custom poll; null for weekly ones. */
+  createdBy: string | null;
   createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
+ * How good each player is, for balancing teams. Organizers only; players never
+ * see it. 1 top, 2 about 70%, 3 about 50% or below, 4 weak, 0 new / not sure.
+ */
+export type Level = 0 | 1 | 2 | 3 | 4;
+
+export interface LevelsDoc {
+  levels: Record<string, Level>;
   updatedAt: Timestamp;
 }
 
@@ -119,11 +152,12 @@ export const DEFAULT_SCHEDULE: WeeklySchedule = {
   matchDurationMinutes: 90,
   pollOpenWeekday: 7,
   pollOpenTime: "12:00",
+  enabled: true,
 };
 
 export const DEFAULT_RULES: GroupRules = {
   squadSize: 18,
-  teamNames: ["Lime", "Orange", "Sky"],
+  kits: DEFAULT_KITS,
   confirmWindowMinutes: 120,
   matchDayConfirmWindowMinutes: 30,
   lateDropOutHours: 24,
@@ -137,9 +171,10 @@ export const DEFAULT_REMINDERS: GroupReminders = {
   matchDayHoursBefore: 4,
 };
 
-export function rosterRules(group: GroupDoc): RosterRules {
+/** The list rules for one poll: the group's, with the poll's own squad size. */
+export function rosterRules(group: GroupDoc, game?: Pick<GameDoc, "squadSize">): RosterRules {
   return {
-    squadSize: group.rules.squadSize,
+    squadSize: game?.squadSize ?? group.rules.squadSize,
     confirmWindowMinutes: group.rules.confirmWindowMinutes,
     matchDayConfirmWindowMinutes: group.rules.matchDayConfirmWindowMinutes,
     lateDropOutHours: group.rules.lateDropOutHours,

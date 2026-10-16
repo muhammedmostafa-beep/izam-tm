@@ -20,7 +20,7 @@ String squadPost({
 
   final b = StringBuffer()
     ..writeln(s.t('${group.name}, week ${s.n(game.weekNumber)}', '${group.name}، الأسبوع ${s.n(game.weekNumber)}'))
-    ..writeln('${s.when(game.kickoffAt)}${s.sep}${group.venue}')
+    ..writeln('${s.when(game.kickoffAt)}${s.sep}${game.venue ?? group.venue}')
     ..writeln()
     ..writeln(s.t('Squad (${s.n(line.squad.length)}/${s.n(line.squadSize)})',
         'التشكيلة (${s.n(line.squad.length)}/${s.n(line.squadSize)})'));
@@ -42,6 +42,30 @@ String squadPost({
     b
       ..writeln()
       ..writeln(s.t('Join, drop out or confirm: $link', 'للتسجيل أو الاعتذار أو التأكيد: $link'));
+  }
+  return b.toString().trimRight();
+}
+
+/// The teams with their kit colors, for the WhatsApp group.
+String teamsPost({
+  required S s,
+  required Group group,
+  required Game game,
+  required List<Team> teams,
+  required Map<String, Member> members,
+}) {
+  final b = StringBuffer()
+    ..writeln(s.t('${group.name}: teams', '${group.name}: الفرق'))
+    ..writeln('${s.when(game.kickoffAt)}${s.sep}${game.venue ?? group.venue}');
+  for (final t in teams) {
+    final names = t.memberIds.map((id) {
+      final m = members[id];
+      return '${m?.name ?? '?'}${(m?.isGoalkeeper ?? false) ? s.t(' (GK)', ' (حارس)') : ''}';
+    });
+    b
+      ..writeln()
+      ..writeln('${t.kit.emoji} *${t.kit.label(s)}* (${s.n(t.memberIds.length)})')
+      ..writeln(names.join(s.isAr ? '، ' : ', '));
   }
   return b.toString().trimRight();
 }

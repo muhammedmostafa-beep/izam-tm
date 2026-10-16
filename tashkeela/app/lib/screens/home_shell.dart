@@ -21,15 +21,30 @@ class GroupView {
     required this.entries,
     required this.log,
     required this.groupIds,
+    this.games = const [],
+    this.levels = const {},
   });
 
   final String uid;
   final Group group;
   final List<Member> members;
+
+  /// The poll on screen.
   final Game? game;
   final List<Entry> entries;
   final List<LogItem> log;
   final List<String> groupIds;
+
+  /// Polls from the last two weeks and ahead, earliest first (cancelled ones included).
+  final List<Game> games;
+
+  /// Organizers only: member id to level (0-4). Empty for players.
+  final Map<String, int> levels;
+
+  /// The polls to pick from: everything not cancelled.
+  List<Game> get polls => games.where((g) => g.status != GameStatus.cancelled).toList();
+  int levelOf(String memberId) => levels[memberId] ?? 0;
+  String venueOf(Game g) => g.venue ?? group.venue;
 
   bool get isAdmin => group.isAdmin(uid);
   Member? get me => members.where((m) => m.uid == uid).firstOrNull;
@@ -63,10 +78,14 @@ class _HomeShellState extends State<HomeShell> {
   final _gameSubs = <StreamSubscription<Object?>>[];
   Group? _group;
   List<Member>? _members;
-  Game? _game;
+  List<Game> _games = const [];
+  Map<String, int> _levels = const {};
   List<Entry> _entries = const [];
   List<LogItem> _log = const [];
   String? _gameId;
+
+  /// The poll the person picked; otherwise the group's current one.
+  String? _picked;
   bool _languageAdopted = false;
   bool _missing = false;
   int _tab = 0;
@@ -82,8 +101,14 @@ class _HomeShellState extends State<HomeShell> {
           _group = g;
           _missing = g == null;
         });
-        if (g?.currentGameId != _gameId) _watchGame(g?.currentGameId);
+        _followSelection();
       }))
+      ..add(repo.games(widget.groupId).listen((games) {
+        setState(() => _games = games);
+        _followSelection();
+      }))
+      // Only organizers may read levels; for everyone else this stays empty.
+      ..add(repo.levels(widget.groupId).listen((l) => setState(() => _levels = l), onError: (Object _) {}))
       ..add(repo.members(widget.groupId).listen((m) {
         setState(() => _members = m);
         _adoptLanguage(m);
@@ -94,6 +119,25 @@ class _HomeShellState extends State<HomeShell> {
       }));
   }
 
+  /// The poll to show: the one picked if it's still listed, else the group's current one, else the first.
+  String? get _selectedId {
+    final listed = _games.where((g) => g.status != GameStatus.cancelled).map((g) => g.id).toList();
+    if (_picked != null && listed.contains(_picked)) return _picked;
+    final current = _group?.currentGameId;
+    if (current != null && listed.contains(current)) return current;
+    return listed.firstOrNull ?? current;
+  }
+
+  void _followSelection() {
+    final id = _selectedId;
+    if (id != _gameId) _watchGame(id);
+  }
+
+  void _selectGame(String gameId) {
+    setState(() => _picked = gameId);
+    _followSelection();
+  }
+
   void _watchGame(String? gameId) {
     for (final s in _gameSubs) {
       s.cancel();
@@ -101,14 +145,12 @@ class _HomeShellState extends State<HomeShell> {
     _gameSubs.clear();
     _gameId = gameId;
     setState(() {
-      _game = null;
       _entries = const [];
       _log = const [];
     });
     if (gameId == null) return;
     final repo = context.services.repo;
     _gameSubs
-      ..add(repo.game(widget.groupId, gameId).listen((g) => setState(() => _game = g)))
       ..add(repo.entries(widget.groupId, gameId).listen((e) => setState(() => _entries = e)))
       ..add(repo.log(widget.groupId, gameId).listen((l) => setState(() => _log = l)));
   }
@@ -144,13 +186,20 @@ class _HomeShellState extends State<HomeShell> {
       uid: widget.uid,
       group: group,
       members: members,
-      game: _game,
+      game: _games.where((g) => g.id == _gameId).firstOrNull,
       entries: _entries,
       log: _log,
       groupIds: widget.groupIds,
+      games: _games,
+      levels: _levels,
     );
     final tabs = [
-      ThisWeekTab(view: view, onSwitchGroup: widget.onSwitchGroup, onOpenSquad: () => setState(() => _tab = 1)),
+      ThisWeekTab(
+        view: view,
+        onSwitchGroup: widget.onSwitchGroup,
+        onOpenSquad: () => setState(() => _tab = 1),
+        onSelectGame: _selectGame,
+      ),
       SquadTab(view: view),
       GroupTab(view: view),
     ];
@@ -160,7 +209,7 @@ class _HomeShellState extends State<HomeShell> {
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: [
-          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: s.t('This week', 'الأسبوع ده')),
+          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: s.t('Polls', 'الماتشات')),
           NavigationDestination(icon: const Icon(Icons.groups_outlined), selectedIcon: const Icon(Icons.groups), label: s.t('Squad', 'التشكيلة')),
           NavigationDestination(icon: const Icon(Icons.settings_outlined), selectedIcon: const Icon(Icons.settings), label: s.t('Group', 'الجروب')),
         ],

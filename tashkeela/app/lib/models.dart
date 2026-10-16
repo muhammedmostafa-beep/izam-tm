@@ -3,6 +3,10 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'kits.dart';
+
+export 'kits.dart';
+
 DateTime? _date(Object? v) => v is Timestamp ? v.toDate() : null;
 
 class Schedule {
@@ -13,6 +17,7 @@ class Schedule {
     required this.matchDurationMinutes,
     required this.pollOpenWeekday,
     required this.pollOpenTime,
+    this.enabled = true,
   });
 
   final String timeZone;
@@ -22,6 +27,9 @@ class Schedule {
   final int pollOpenWeekday;
   final String pollOpenTime;
 
+  /// Off: no weekly poll; the organizer makes each poll.
+  final bool enabled;
+
   factory Schedule.fromMap(Map<String, dynamic> m) => Schedule(
         timeZone: m['timeZone'] as String? ?? 'Africa/Cairo',
         matchWeekday: m['matchWeekday'] as int? ?? 4,
@@ -29,6 +37,7 @@ class Schedule {
         matchDurationMinutes: m['matchDurationMinutes'] as int? ?? 90,
         pollOpenWeekday: m['pollOpenWeekday'] as int? ?? 7,
         pollOpenTime: m['pollOpenTime'] as String? ?? '12:00',
+        enabled: m['enabled'] as bool? ?? true,
       );
 }
 
@@ -41,15 +50,18 @@ class QuietHours {
 class Rules {
   const Rules({
     required this.squadSize,
-    required this.teamNames,
+    required this.kits,
     required this.confirmWindowMinutes,
     required this.matchDayConfirmWindowMinutes,
     required this.lateDropOutHours,
     required this.quietHours,
   });
 
+  /// Squad size for new polls.
   final int squadSize;
-  final List<String> teamNames;
+
+  /// The kits teams play in.
+  final List<Kit> kits;
   final int confirmWindowMinutes;
   final int matchDayConfirmWindowMinutes;
   final int lateDropOutHours;
@@ -59,7 +71,7 @@ class Rules {
     final q = m['quietHours'] as Map<String, dynamic>?;
     return Rules(
       squadSize: m['squadSize'] as int? ?? 18,
-      teamNames: (m['teamNames'] as List?)?.cast<String>() ?? const ['Lime', 'Orange', 'Sky'],
+      kits: [for (final k in (m['kits'] as List?) ?? const []) Kit.fromMap((k as Map).cast<String, dynamic>())].nonEmptyOr(Kit.base),
       confirmWindowMinutes: m['confirmWindowMinutes'] as int? ?? 120,
       matchDayConfirmWindowMinutes: m['matchDayConfirmWindowMinutes'] as int? ?? 30,
       lateDropOutHours: m['lateDropOutHours'] as int? ?? 24,
@@ -190,6 +202,8 @@ class Member {
 
 enum GameStatus { scheduled, open, closed, played, cancelled }
 
+/// One poll: a game with its own date, place and squad. Weekly polls come
+/// from the group's schedule; custom ones an organizer made.
 class Game {
   const Game({
     required this.id,
@@ -202,6 +216,10 @@ class Game {
     required this.reserveCount,
     required this.winner,
     required this.photoPath,
+    this.kind = 'weekly',
+    this.venue,
+    this.durationMinutes = 90,
+    this.teams,
   });
 
   final String id;
@@ -214,6 +232,21 @@ class Game {
   final int reserveCount;
   final String? winner;
   final String? photoPath;
+
+  /// weekly or custom.
+  final String kind;
+
+  /// Where it's played; null for older games (use the group's venue).
+  final String? venue;
+  final int durationMinutes;
+
+  /// The teams the organizer made, if any.
+  final List<Team>? teams;
+
+  bool get isCustom => kind == 'custom';
+
+  /// Still ahead: votes can come in (or will, once the poll opens).
+  bool get isAhead => status == GameStatus.scheduled || status == GameStatus.open;
 
   factory Game.fromDoc(DocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data() ?? const {};
@@ -229,6 +262,13 @@ class Game {
       reserveCount: m['reserveCount'] as int? ?? 0,
       winner: result?['winner'] as String?,
       photoPath: result?['photoPath'] as String?,
+      kind: m['kind'] as String? ?? 'weekly',
+      venue: m['venue'] as String?,
+      durationMinutes: m['durationMinutes'] as int? ?? 90,
+      teams: switch (m['teams']) {
+        {'teams': final List<dynamic> list} => [for (final t in list) Team.fromMap((t as Map).cast<String, dynamic>())],
+        _ => null,
+      },
     );
   }
 }
@@ -293,4 +333,8 @@ class LogItem {
       late: m['late'] as bool? ?? false,
     );
   }
+}
+
+extension _NonEmptyOr<T> on List<T> {
+  List<T> nonEmptyOr(List<T> fallback) => isEmpty ? fallback : this;
 }

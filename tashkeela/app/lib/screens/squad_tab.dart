@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n.dart';
+import '../levels.dart';
 import '../models.dart';
 import '../services/services.dart';
 import '../theme.dart';
@@ -33,6 +34,10 @@ class SquadTab extends StatelessWidget {
             style: TextStyle(fontWeight: isMe ? FontWeight.w700 : FontWeight.w500, color: isMe ? Palette.lime : null)),
         subtitle: e.source == 'whatsapp' ? Text(s.t('via WhatsApp', 'من واتساب'), style: const TextStyle(fontSize: 12)) : null,
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (view.isAdmin) ...[
+            Pill(levelBadge(s, view.levelOf(e.memberId)), color: levelColor(view.levelOf(e.memberId))),
+            const SizedBox(width: 6),
+          ],
           if (member?.isGoalkeeper ?? false) Pill(s.t('GK', 'حارس'), color: Palette.sky),
           if (e.state == EntryState.offered) ...[
             const SizedBox(width: 6),

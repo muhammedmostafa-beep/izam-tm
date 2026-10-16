@@ -16,6 +16,7 @@ Widget thisWeek({List<Entry>? entries, Game? currentGame, bool admin = false, St
         view: view(entries: entries, currentGame: currentGame, admin: admin),
         onSwitchGroup: (_) {},
         onOpenSquad: () {},
+        onSelectGame: (_) {},
       ),
       lang: lang,
     );

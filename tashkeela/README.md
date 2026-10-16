@@ -30,9 +30,25 @@ tashkeela/
   "Pass" moves the offer to the next reserve.
 - **Late drop-outs.** Dropping out within 24 hours of kick-off is marked as
   late and shown in the list.
-- **Scheduler.** `tick` runs every minute: it creates the week's game, opens
-  the poll on time, expires offers and sends the match-day reminder. Every
-  change is logged under `games/{gameId}/log`.
+- **Polls.** The weekly poll is made from the group's schedule (it can be
+  turned off). Organizers can also make polls of their own, each with its
+  date, kick-off time, length, location, squad size and when voting opens,
+  and change or call them off later; everyone on the list is told. The app
+  opens on the next poll ahead and lets you switch between them.
+- **Levels.** Organizers rate players 1 (top), 2 (about 70%), 3 (about 50% or
+  below), 4 (weak) or 0 (new, not sure yet). Levels live in
+  `groups/{groupId}/private/levels`, which only organizers can read.
+- **Teams and kits.** Teams play in kits: red, black and white by default, or
+  any other color the organizer picks and names. The team maker
+  (`app/lib/teams.dart`) spreads goalkeepers first, then gives each player,
+  strongest first, to the weakest team so far (new players count as 50% and
+  are spread evenly). Organizers can shuffle, move players and change kits,
+  then save and share the teams to WhatsApp; everyone sees the teams, never
+  the levels. The winners are recorded by kit.
+- **Scheduler.** `tick` runs every minute: it creates the week's poll, and
+  for every poll ahead opens it on time, expires offers, sends the match-day
+  reminder and closes it at kick-off. Every change is logged under
+  `games/{gameId}/log`.
 
 All the numbers above are per-group settings (Group tab > Game settings).
 
@@ -75,8 +91,9 @@ the phone: one group of 22, a poll that opens a minute after you sign in (any
 number, any 6-digit code), and 21 scripted players who race you for the spots,
 drop out and answer offers using the same list rules as the server
 (`lib/demo/roster.dart`, a copy of `functions/src/domain/roster.ts`). The
-Group tab has demo controls: make someone drop out, skip to after the game,
-switch between the organizer's and a player's view, start over.
+simulated players come with levels, so the team maker has something to
+balance. The Group tab has demo controls: make someone drop out, skip to after
+the game, switch between the organizer's and a player's view, start over.
 
 ```sh
 cd tashkeela/app
@@ -219,9 +236,11 @@ delivery is checked against Meta's signature.
 users/{uid}                               phone, groupIds, pushIds, language
 groups/{groupId}                          name, venue, schedule, rules, reminders, adminUids, memberUids
 groups/{groupId}/members/{memberId}       name, phone, uid, role, isGoalkeeper, whatsappOptIn, language
-groups/{groupId}/games/{gameId}           kickoffAt, pollOpensAt, status, counts   (gameId = kick-off date)
+groups/{groupId}/games/{gameId}           a poll: kind, kickoffAt, venue, squadSize, pollOpensAt, status, teams
+                                          (weekly polls: gameId = kick-off date; others: auto ID)
 groups/{groupId}/games/{gameId}/entries   one per player: seq, state, offer, drop-out
 groups/{groupId}/games/{gameId}/log       every vote and change, for disputes
+groups/{groupId}/private/levels           each member's level, organizers only
 ```
 
 Only Cloud Functions write. Members can read their own groups; nobody else
@@ -229,8 +248,10 @@ can read anything (`firestore.rules`, tested in `functions/integration/rules.tes
 
 ## Not built yet
 
-These are planned for later, once the group asks for them: team generator, payment tracker, stats and season
-table, priority rules for regulars, and a native iPhone build.
+These are planned for later, once the group asks for them: payment tracker, stats and season
+table, priority rules for regulars, and a native iPhone build. A moved or
+called-off poll is announced by push only; WhatsApp would need two more
+approved templates.
 
 Fonts (Barlow Condensed, DM Sans, IBM Plex Sans Arabic) are bundled under the
 SIL Open Font License; see `app/assets/fonts/`.

@@ -27,10 +27,13 @@ const demoGroupId = 'demo';
 const _meId = 'm00';
 
 class _Bot {
-  const _Bot(this.id, this.name, this.language, {this.whatsapp = false, this.goalkeeper = false});
+  const _Bot(this.id, this.name, this.language, this.level, {this.whatsapp = false, this.goalkeeper = false});
   final String id;
   final String name;
   final String language;
+
+  /// The organizer's rating of them (see levels.dart), so the team maker has something to balance.
+  final int level;
 
   /// Votes by tapping the WhatsApp button instead of using the app.
   final bool whatsapp;
@@ -41,27 +44,27 @@ class _Bot {
 /// a little slower and end up as reserves unless you are slower still.
 /// Fady never votes.
 const _bots = [
-  _Bot('m01', 'Mostafa H.', 'ar', goalkeeper: true),
-  _Bot('m02', 'Mahmoud R.', 'ar', whatsapp: true),
-  _Bot('m03', 'Ali F.', 'en'),
-  _Bot('m04', 'Amr G.', 'ar', whatsapp: true),
-  _Bot('m05', 'Ziad E.', 'en', goalkeeper: true),
-  _Bot('m06', 'Sherif L.', 'ar'),
-  _Bot('m07', 'Khaled W.', 'ar', whatsapp: true),
-  _Bot('m08', 'Hassan T.', 'ar', whatsapp: true),
-  _Bot('m09', 'Mido A.', 'en'),
-  _Bot('m10', 'Seif O.', 'ar', goalkeeper: true),
-  _Bot('m11', 'Nour E.', 'ar', whatsapp: true),
-  _Bot('m12', 'Omar K.', 'en'),
-  _Bot('m13', 'Adham S.', 'ar'),
-  _Bot('m14', 'Ramy H.', 'ar', whatsapp: true),
-  _Bot('m15', 'Hany B.', 'en'),
-  _Bot('m16', 'Tarek N.', 'ar', whatsapp: true),
-  _Bot('m17', 'Islam D.', 'ar'),
-  _Bot('m18', 'Karim M.', 'ar', whatsapp: true),
-  _Bot('m19', 'Bassem K.', 'en'),
-  _Bot('m20', 'Youssef A.', 'en'),
-  _Bot('m21', 'Fady M.', 'ar', whatsapp: true),
+  _Bot('m01', 'Mostafa H.', 'ar', 2, goalkeeper: true),
+  _Bot('m02', 'Mahmoud R.', 'ar', 1, whatsapp: true),
+  _Bot('m03', 'Ali F.', 'en', 2),
+  _Bot('m04', 'Amr G.', 'ar', 3, whatsapp: true),
+  _Bot('m05', 'Ziad E.', 'en', 3, goalkeeper: true),
+  _Bot('m06', 'Sherif L.', 'ar', 1),
+  _Bot('m07', 'Khaled W.', 'ar', 2, whatsapp: true),
+  _Bot('m08', 'Hassan T.', 'ar', 4, whatsapp: true),
+  _Bot('m09', 'Mido A.', 'en', 2),
+  _Bot('m10', 'Seif O.', 'ar', 2, goalkeeper: true),
+  _Bot('m11', 'Nour E.', 'ar', 3, whatsapp: true),
+  _Bot('m12', 'Omar K.', 'en', 1),
+  _Bot('m13', 'Adham S.', 'ar', 3),
+  _Bot('m14', 'Ramy H.', 'ar', 2, whatsapp: true),
+  _Bot('m15', 'Hany B.', 'en', 0),
+  _Bot('m16', 'Tarek N.', 'ar', 3, whatsapp: true),
+  _Bot('m17', 'Islam D.', 'ar', 2),
+  _Bot('m18', 'Karim M.', 'ar', 1, whatsapp: true),
+  _Bot('m19', 'Bassem K.', 'en', 3),
+  _Bot('m20', 'Youssef A.', 'en', 0),
+  _Bot('m21', 'Fady M.', 'ar', 4, whatsapp: true),
 ];
 
 const _fastBots = 17;
@@ -76,7 +79,7 @@ const _dropAfterOpen = Duration(seconds: 30);
 
 const _defaultRules = Rules(
   squadSize: 18,
-  teamNames: ['Lime', 'Orange', 'Sky'],
+  kits: Kit.base,
   confirmWindowMinutes: 120,
   matchDayConfirmWindowMinutes: 30,
   lateDropOutHours: 24,
@@ -103,11 +106,24 @@ class _GroupState {
   final adminUids = <String>[];
   final members = <String, Member>{};
   final games = <String, _GameState>{};
+
+  /// Organizers only: member id to level (0-4).
+  final levels = <String, int>{};
   String? currentGameId;
   Champions? lastChampions;
   int memberCounter = 100;
+  int gameCounter = 0;
 
   _GameState? get currentGame => games[currentGameId];
+
+  /// The poll the app opens on, like pickCurrentGame on the server.
+  void refreshCurrent() {
+    final all = games.values.toList();
+    final ahead = all.where((x) => x.isAhead).toList()..sort((a, b) => a.kickoffAt.compareTo(b.kickoffAt));
+    final past = all.where((x) => x.status == GameStatus.closed || x.status == GameStatus.played).toList()
+      ..sort((a, b) => b.kickoffAt.compareTo(a.kickoffAt));
+    currentGameId = ahead.firstOrNull?.id ?? past.firstOrNull?.id;
+  }
 
   Group view() => Group(
         id: id,
@@ -124,20 +140,38 @@ class _GroupState {
 }
 
 class _GameState {
-  _GameState({required this.id, required this.weekNumber, required this.kickoffAt, required this.pollOpensAt});
+  _GameState({
+    required this.id,
+    required this.weekNumber,
+    required this.kickoffAt,
+    required this.pollOpensAt,
+    required this.venue,
+    required this.squadSize,
+    this.kind = 'weekly',
+    this.durationMinutes = 90,
+  });
 
   final String id;
   final int weekNumber;
+  final String kind;
   DateTime kickoffAt;
   DateTime pollOpensAt;
+  String venue;
+  int squadSize;
+  int durationMinutes;
   GameStatus status = GameStatus.scheduled;
   int nextSeq = 1;
   List<Entry> entries = const [];
   final log = <LogItem>[];
+  List<Team>? teams;
   String? winner;
   String? photoPath;
 
-  Game view(int squadSize) {
+  bool get isAhead => status == GameStatus.scheduled || status == GameStatus.open;
+
+  bool hasOnList(String memberId) => entries.any((e) => e.memberId == memberId && e.state != EntryState.out);
+
+  Game view() {
     final line = RosterLine.from(entries, squadSize);
     return Game(
       id: id,
@@ -150,9 +184,23 @@ class _GameState {
       reserveCount: line.reserves.length,
       winner: winner,
       photoPath: photoPath,
+      kind: kind,
+      venue: venue,
+      durationMinutes: durationMinutes,
+      teams: teams,
     );
   }
 }
+
+/// The group's rules with one poll's squad size.
+Rules _rulesFor(Rules r, int squadSize) => Rules(
+      squadSize: squadSize,
+      kits: r.kits,
+      confirmWindowMinutes: r.confirmWindowMinutes,
+      matchDayConfirmWindowMinutes: r.matchDayConfirmWindowMinutes,
+      lateDropOutHours: r.lateDropOutHours,
+      quietHours: r.quietHours,
+    );
 
 Member _member(Member m, {String? name, bool? isAdmin, bool? isGoalkeeper, bool? whatsappOptIn, String? language, bool? active}) =>
     Member(
@@ -231,6 +279,7 @@ class DemoBackend {
       ),
     );
     g.adminUids.add(demoUid);
+    g.levels[_meId] = 2;
     g.members[_meId] = Member(
       id: _meId,
       name: 'Ahmed S.',
@@ -243,6 +292,7 @@ class DemoBackend {
       active: true,
     );
     for (final (i, b) in _bots.indexed) {
+      g.levels[b.id] = b.level;
       g.members[b.id] = Member(
         id: b.id,
         name: b.name,
@@ -255,10 +305,18 @@ class DemoBackend {
         active: true,
       );
     }
-    final game = _GameState(id: 'week-12', weekNumber: 12, kickoffAt: kickoff, pollOpensAt: opens);
+    final game = _GameState(
+      id: 'week-12',
+      weekNumber: 12,
+      kickoffAt: kickoff,
+      pollOpensAt: opens,
+      venue: g.venue,
+      squadSize: 18,
+    );
     g.games[game.id] = game;
+    g.gameCounter = 12;
     g.currentGameId = game.id;
-    g.lastChampions = const Champions(gameId: 'week-11', weekNumber: 11, winner: 'Orange');
+    g.lastChampions = const Champions(gameId: 'week-11', weekNumber: 11, winner: 'Black');
     _groups[demoGroupId] = g;
     _schedule(g, game);
     _changed();
@@ -270,18 +328,28 @@ class DemoBackend {
     _at(game.kickoffAt, () => _close(g, game));
   }
 
-  void _openPoll(_GroupState g, _GameState game) {
+  void _openPoll(_GroupState g, _GameState game, {bool early = false}) {
     if (game.status != GameStatus.scheduled) return;
     final t = now();
+    // A timer for an opening time that has since moved.
+    if (!early && t.isBefore(game.pollOpensAt.subtract(const Duration(seconds: 1)))) return;
     game.status = GameStatus.open;
     if (game.pollOpensAt.isAfter(t)) game.pollOpensAt = t;
     _notify(g, (s) => (
           s.t('Poll is open: ${g.name}', 'التصويت مفتوح: ${g.name}'),
-          s.t('${s.when(game.kickoffAt)} · ${s.n(g.rules.squadSize)} spots. Tap to grab yours.',
-              '${s.when(game.kickoffAt)} – ${s.n(g.rules.squadSize)} مكان. اضغط عشان تحجز مكانك.'),
+          s.t('${s.when(game.kickoffAt)} · ${s.n(game.squadSize)} spots. Tap to grab yours.',
+              '${s.when(game.kickoffAt)} – ${s.n(game.squadSize)} مكان. اضغط عشان تحجز مكانك.'),
         ));
     _changed();
     if (g.id != demoGroupId) return;
+    if (game.id != 'week-12') {
+      // Extra polls: the players vote over a few seconds until the squad is full, plus two reserves.
+      final keen = [..._bots]..sort((a, b) => (a.id.hashCode ^ game.id.hashCode).compareTo(b.id.hashCode ^ game.id.hashCode));
+      for (final (i, b) in keen.take(game.squadSize + 2).indexed) {
+        _after(Duration(milliseconds: 800 + i * 450), () => _botJoin(g, game, b));
+      }
+      return;
+    }
 
     // The race: most players vote within ten seconds, the rest a little later.
     for (final (i, b) in _bots.take(_fastBots).indexed) {
@@ -296,8 +364,11 @@ class DemoBackend {
   /// Kick-off: the poll closes and open offers lapse.
   void _close(_GroupState g, _GameState game) {
     if (game.status != GameStatus.open && game.status != GameStatus.scheduled) return;
+    // A timer for a kick-off that has since moved.
+    if (now().isBefore(game.kickoffAt.subtract(const Duration(seconds: 1)))) return;
     if (game.status == GameStatus.open) _applyRoster(g, game, 'expire', null, 'app');
     game.status = GameStatus.closed;
+    g.refreshCurrent();
     _changed();
   }
 
@@ -365,7 +436,7 @@ class DemoBackend {
     final game = g.currentGame!;
     if (game.status == GameStatus.scheduled) throw ApiException('poll_not_open');
     if (game.status != GameStatus.open) throw ApiException('game_closed');
-    final squad = RosterLine.from(game.entries, g.rules.squadSize).squad;
+    final squad = RosterLine.from(game.entries, game.squadSize).squad;
     final candidates = squad.where((e) => e.memberId != _meId && e.state == EntryState.confirmed).toList();
     if (candidates.isEmpty) throw ApiException('not_in');
     final pick = candidates[now().millisecond % candidates.length];
@@ -475,7 +546,7 @@ class DemoBackend {
       if (game.status == GameStatus.scheduled) throw ApiException('poll_not_open');
       if (game.status != GameStatus.open || !t.isBefore(game.kickoffAt)) throw ApiException('game_closed');
     }
-    final ctx = roster.RosterContext(now: t, kickoffAt: game.kickoffAt, rules: g.rules);
+    final ctx = roster.RosterContext(now: t, kickoffAt: game.kickoffAt, rules: _rulesFor(g.rules, game.squadSize));
     final roster.RosterResult result;
     try {
       switch (action) {
@@ -517,7 +588,15 @@ class DemoBackend {
     var back = (s.matchWeekday - s.pollOpenWeekday) % 7;
     if (back == 0) back = 7;
     final opens = DateTime(kickoff.year, kickoff.month, kickoff.day - back, poll[0], poll[1]);
-    return _GameState(id: 'week-$weekNumber', weekNumber: weekNumber, kickoffAt: kickoff, pollOpensAt: opens);
+    return _GameState(
+      id: 'week-$weekNumber',
+      weekNumber: weekNumber,
+      kickoffAt: kickoff,
+      pollOpensAt: opens,
+      venue: '',
+      squadSize: 18,
+      durationMinutes: s.matchDurationMinutes,
+    );
   }
 
   Stream<T> _watch<T>(T Function() read) {
@@ -638,10 +717,7 @@ class _DemoRepo implements Repo {
       });
 
   @override
-  Stream<Game?> game(String groupId, String gameId) => b._watch(() {
-        final g = b._groups[groupId];
-        return g?.games[gameId]?.view(g.rules.squadSize);
-      });
+  Stream<Game?> game(String groupId, String gameId) => b._watch(() => b._groups[groupId]?.games[gameId]?.view());
 
   @override
   Stream<List<Entry>> entries(String groupId, String gameId) =>
@@ -656,10 +732,23 @@ class _DemoRepo implements Repo {
     final g = b._groups[groupId];
     if (g == null) return null;
     final t = b.now();
-    final played = g.games.values.where((x) => !x.kickoffAt.isAfter(t)).toList()
+    final played = g.games.values.where((x) => !x.kickoffAt.isAfter(t) && x.status != GameStatus.cancelled).toList()
       ..sort((x, y) => y.kickoffAt.compareTo(x.kickoffAt));
-    return played.firstOrNull?.view(g.rules.squadSize);
+    return played.firstOrNull?.view();
   }
+
+  @override
+  Stream<List<Game>> games(String groupId) => b._watch(() {
+        final since = b.now().subtract(const Duration(days: 14));
+        final list = (b._groups[groupId]?.games.values ?? const <_GameState>[])
+            .where((x) => !x.kickoffAt.isBefore(since))
+            .map((x) => x.view())
+            .toList();
+        return list..sort((x, y) => x.kickoffAt.compareTo(y.kickoffAt));
+      });
+
+  @override
+  Stream<Map<String, int>> levels(String groupId) => b._watch(() => Map.of(b._groups[groupId]?.levels ?? const {}));
 }
 
 class _DemoApi implements Api {
@@ -707,8 +796,9 @@ class _DemoApi implements Api {
       language: language == 'en' ? 'en' : 'ar',
       active: true,
     );
-    final game = b._nextGame(g.schedule, 1);
+    final game = b._nextGame(g.schedule, 1)..venue = g.venue;
     g.games[game.id] = game;
+    g.gameCounter = 1;
     g.currentGameId = game.id;
     b._groups[id] = g;
     b._schedule(g, game);
@@ -733,28 +823,40 @@ class _DemoApi implements Api {
         matchDurationMinutes: sch['matchDurationMinutes'] as int? ?? old.matchDurationMinutes,
         pollOpenWeekday: sch['pollOpenWeekday'] as int? ?? old.pollOpenWeekday,
         pollOpenTime: sch['pollOpenTime'] as String? ?? old.pollOpenTime,
+        enabled: sch['enabled'] as bool? ?? old.enabled,
       );
-      // Like the server: a game whose poll hasn't opened yet moves to the new times.
-      final game = g.currentGame;
-      if (game != null && game.status == GameStatus.scheduled) {
+      // Like the server: a weekly poll that hasn't opened yet moves to the new times, or goes if the weekly poll is off.
+      for (final game in [...g.games.values]) {
+        if (game.kind != 'weekly' || game.status != GameStatus.scheduled) continue;
+        if (!g.schedule.enabled) {
+          g.games.remove(game.id);
+          continue;
+        }
         final next = b._nextGame(g.schedule, game.weekNumber);
         game
           ..kickoffAt = next.kickoffAt
           ..pollOpensAt = next.pollOpensAt;
-        if (g.id == demoGroupId) b._cancelTimers();
         b._schedule(g, game);
+      }
+      g.refreshCurrent();
+    }
+    if (patch['venue'] != null) {
+      for (final game in g.games.values.where((x) => x.kind == 'weekly' && x.isAhead)) {
+        game.venue = g.venue;
       }
     }
     final r = patch['rules'] as Map<String, dynamic>?;
     if (r != null) {
       final old = g.rules;
-      final teams = (r['teamNames'] as List?)?.cast<String>() ?? old.teamNames;
+      final kits = r['kits'] == null
+          ? old.kits
+          : _kits([for (final k in r['kits'] as List) Kit.fromMap((k as Map).cast<String, dynamic>())]);
       final squad = r['squadSize'] as int? ?? old.squadSize;
-      if (teams.isEmpty || squad < 2 || squad > 40) throw ApiException('invalid_argument');
+      if (squad < 2 || squad > 60) throw ApiException('invalid_argument');
       final q = r.containsKey('quietHours') ? r['quietHours'] as Map<String, dynamic>? : null;
       g.rules = Rules(
         squadSize: squad,
-        teamNames: teams,
+        kits: kits,
         confirmWindowMinutes: r['confirmWindowMinutes'] as int? ?? old.confirmWindowMinutes,
         matchDayConfirmWindowMinutes: r['matchDayConfirmWindowMinutes'] as int? ?? old.matchDayConfirmWindowMinutes,
         lateDropOutHours: r['lateDropOutHours'] as int? ?? old.lateDropOutHours,
@@ -762,9 +864,11 @@ class _DemoApi implements Api {
             ? (q == null ? null : QuietHours(q['start'] as String, q['end'] as String))
             : old.quietHours,
       );
-      // A new squad size moves the line between squad and reserves.
-      final game = g.currentGame;
-      if (game != null && game.status == GameStatus.open) b._applyRoster(g, game, 'expire', null, 'admin');
+      // A new squad size applies to this week's poll too, and moves its line between squad and reserves.
+      for (final game in g.games.values.where((x) => x.kind == 'weekly' && x.isAhead && x.squadSize != squad)) {
+        game.squadSize = squad;
+        if (game.status == GameStatus.open) b._applyRoster(g, game, 'expire', null, 'admin');
+      }
     }
     final rem = patch['reminders'] as Map<String, dynamic>?;
     if (rem != null) {
@@ -831,12 +935,11 @@ class _DemoApi implements Api {
     b._requireAdmin(g);
     final m = g.members[memberId] ?? (throw ApiException('not_found'));
     if (m.uid != null && g.adminUids.contains(m.uid) && g.adminUids.length == 1) throw ApiException('invalid_argument');
-    final game = g.currentGame;
-    if (game != null) {
+    for (final game in g.games.values.where((x) => x.isAhead)) {
       try {
         b._applyRoster(g, game, 'remove', memberId, 'admin');
       } on ApiException catch (e) {
-        // Not on this week's list, or the poll is closed: nothing to undo.
+        // Not on that poll's list, or it isn't open: nothing to undo.
         if (!const {'not_in', 'poll_not_open', 'game_closed'}.contains(e.code)) rethrow;
       }
     }
@@ -861,7 +964,7 @@ class _DemoApi implements Api {
     if (!const {'join', 'drop', 'confirm', 'pass'}.contains(action)) throw ApiException('invalid_argument');
     final result = b._applyRoster(g, game, action, me.id, 'app');
     final entry = result.entries.where((e) => e.memberId == me.id).firstOrNull;
-    final line = RosterLine.from(result.entries, g.rules.squadSize);
+    final line = RosterLine.from(result.entries, game.squadSize);
     final index = [...line.squad, ...line.reserves].indexWhere((e) => e.memberId == me.id);
     return (state: entry?.state.name, position: index < 0 ? null : index + 1);
   }
@@ -875,27 +978,141 @@ class _DemoApi implements Api {
   }
 
   @override
-  Future<void> openPollNow(String groupId) async {
+  Future<void> openPollNow(String groupId, String gameId) async {
     final g = b._group(groupId);
     b._requireAdmin(g);
-    final game = g.currentGame ?? (throw ApiException('not_found'));
+    final game = b._game(g, gameId);
     if (game.status != GameStatus.scheduled) throw ApiException('invalid_argument');
-    b._openPoll(g, game);
+    b._openPoll(g, game, early: true);
   }
 
   @override
   Future<void> recordResult(String groupId, String gameId, {required String winner, String? photoPath}) async {
     final g = b._group(groupId);
     b._requireAdmin(g);
-    if (!g.rules.teamNames.contains(winner)) throw ApiException('invalid_argument');
     if (photoPath != null && !photoPath.startsWith('groups/$groupId/champions/')) throw ApiException('invalid_argument');
     final game = b._game(g, gameId);
-    if (b.now().isBefore(game.kickoffAt)) throw ApiException('invalid_argument');
+    if (game.status == GameStatus.cancelled || b.now().isBefore(game.kickoffAt)) throw ApiException('invalid_argument');
+    final kits = game.teams?.map((t) => t.kit) ?? g.rules.kits;
+    if (!kits.any((k) => k.name == winner)) throw ApiException('invalid_argument');
     game
       ..status = GameStatus.played
       ..winner = winner
       ..photoPath = photoPath;
     g.lastChampions = Champions(gameId: gameId, weekNumber: game.weekNumber, winner: winner, photoPath: photoPath);
+    b._changed();
+  }
+
+  /// 2 to 6 kits with different names, like normalizeKits on the server.
+  List<Kit> _kits(List<Kit> kits) {
+    final names = kits.map((k) => k.name.toLowerCase()).toSet();
+    if (kits.length < 2 || kits.length > 6 || names.length != kits.length) throw ApiException('invalid_argument');
+    return [for (final k in kits) Kit.base.where((x) => x.color == k.color).firstOrNull ?? k];
+  }
+
+  @override
+  Future<String> createPoll(String groupId, PollDraft poll) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final t = b.now();
+    final opens = poll.pollOpensAt ?? t;
+    if (!poll.kickoffAt.isAfter(t) || !opens.isBefore(poll.kickoffAt)) throw ApiException('invalid_argument');
+    final game = _GameState(
+      id: 'poll-${++g.gameCounter}',
+      weekNumber: g.gameCounter,
+      kind: 'custom',
+      kickoffAt: poll.kickoffAt,
+      pollOpensAt: opens.isBefore(t) ? t : opens,
+      venue: _text(poll.venue),
+      squadSize: poll.squadSize,
+      durationMinutes: poll.durationMinutes,
+    );
+    g.games[game.id] = game;
+    b._schedule(g, game);
+    if (!opens.isAfter(t)) b._openPoll(g, game, early: true);
+    g.refreshCurrent();
+    b._changed();
+    return game.id;
+  }
+
+  @override
+  Future<void> updatePoll(String groupId, String gameId, PollDraft poll) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final game = b._game(g, gameId);
+    if (!game.isAhead) throw ApiException('invalid_argument');
+    final t = b.now();
+    if (!poll.kickoffAt.isAfter(t)) throw ApiException('invalid_argument');
+    final opens = game.status == GameStatus.scheduled ? (poll.pollOpensAt ?? t) : game.pollOpensAt;
+    if (!opens.isBefore(poll.kickoffAt)) throw ApiException('invalid_argument');
+    final venue = _text(poll.venue);
+    final moved = game.status == GameStatus.open && (poll.kickoffAt != game.kickoffAt || venue != game.venue);
+    final resized = poll.squadSize != game.squadSize;
+    game
+      ..kickoffAt = poll.kickoffAt
+      ..pollOpensAt = opens
+      ..venue = venue
+      ..durationMinutes = poll.durationMinutes
+      ..squadSize = poll.squadSize;
+    b._schedule(g, game);
+    if (game.status == GameStatus.scheduled && !opens.isAfter(t)) b._openPoll(g, game, early: true);
+    if (resized && game.status == GameStatus.open) b._applyRoster(g, game, 'expire', null, 'admin');
+    final me = b._myMember(g);
+    if (moved && me != null && game.hasOnList(me.id)) {
+      b._notify(g, (s) => (
+            s.t('Game details changed', 'الماتش اتغير'),
+            s.t('Now ${s.when(game.kickoffAt)} at ${game.venue}. Your place on the list stays.',
+                'المعاد الجديد ${s.when(game.kickoffAt)} في ${game.venue}. مكانك في القائمة زي ما هو.'),
+          ));
+    }
+    g.refreshCurrent();
+    b._changed();
+  }
+
+  @override
+  Future<void> cancelPoll(String groupId, String gameId) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final game = b._game(g, gameId);
+    if (game.status == GameStatus.played || game.status == GameStatus.cancelled) throw ApiException('invalid_argument');
+    final wasOpen = game.status == GameStatus.open;
+    game.status = GameStatus.cancelled;
+    final me = b._myMember(g);
+    if (wasOpen && me != null && game.hasOnList(me.id)) {
+      b._notify(g, (s) => (
+            s.t('Game called off', 'الماتش اتلغى'),
+            s.t("The game on ${s.when(game.kickoffAt)} is cancelled. We'll let you know about the next one.",
+                'ماتش ${s.when(game.kickoffAt)} اتلغى. هنبلغك بالماتش الجاي.'),
+          ));
+    }
+    g.refreshCurrent();
+    b._changed();
+  }
+
+  @override
+  Future<void> setMemberLevel(String groupId, String memberId, int level) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    if (level < 0 || level > 4 || !g.members.containsKey(memberId)) throw ApiException('invalid_argument');
+    g.levels[memberId] = level;
+    b._changed();
+  }
+
+  @override
+  Future<void> saveTeams(String groupId, String gameId, List<Team>? teams) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final game = b._game(g, gameId);
+    if (game.status == GameStatus.cancelled || game.status == GameStatus.played) throw ApiException('invalid_argument');
+    if (teams != null) {
+      final kits = _kits([for (final t in teams) t.kit]);
+      final seen = <String>{};
+      for (final id in teams.expand((t) => t.memberIds)) {
+        if (!(g.members[id]?.active ?? false) || !seen.add(id)) throw ApiException('invalid_argument');
+      }
+      teams = [for (final (i, t) in teams.indexed) Team(kit: kits[i], memberIds: List.of(t.memberIds))];
+    }
+    game.teams = teams;
     b._changed();
   }
 }

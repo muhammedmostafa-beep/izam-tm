@@ -26,6 +26,12 @@ Future<void> wait(WidgetTester tester, int seconds) async {
   }
 }
 
+/// A route push or pop: one frame to start it, then time for the transition.
+Future<void> navigate(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+}
+
 Future<void> tapText(WidgetTester tester, String text) async {
   final target = find.text(text);
   await tester.scrollUntilVisible(target, 200, scrollable: find.byType(Scrollable).first);
@@ -116,15 +122,15 @@ void main() {
     expect(find.text('Someone drops out'), findsOneWidget);
     await tapText(tester, 'Skip to after the game');
     await tester.pump(const Duration(seconds: 1));
-    await tester.tap(find.text('This week'));
+    await tester.tap(find.text('Polls'));
     await tester.pump();
     expect(find.text('The poll for this game is closed.'), findsOneWidget);
     expect(find.text('Record the winners'), findsOneWidget);
 
-    await backend.services.api.recordResult(demoGroupId, 'week-12', winner: 'Sky');
+    await backend.services.api.recordResult(demoGroupId, 'week-12', winner: 'White');
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Full time.'), findsOneWidget);
-    expect(find.textContaining('TEAM SKY'), findsOneWidget);
+    expect(find.textContaining('TEAM WHITE'), findsOneWidget);
     expect((await backend.services.repo.lastPlayedGame(demoGroupId))?.status, GameStatus.played);
 
     // A regular player doesn't get the organizer's controls.
@@ -133,6 +139,45 @@ void main() {
     await tapText(tester, 'Organizer controls');
     await tester.pump();
     expect(find.text('Game settings'), findsNothing);
+    await finish(tester);
+  });
+
+  testWidgets('an organizer makes an extra poll and balanced teams in red, black and white', (tester) async {
+    await start(tester);
+    await signIn(tester);
+
+    await tester.tap(find.text('New poll'));
+    await navigate(tester);
+    expect(find.text('NEW POLL'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Zayed Club · Pitch 2');
+    await tapText(tester, 'Create poll');
+    await navigate(tester);
+
+    // Voting opened at once, and the players vote within seconds.
+    await wait(tester, 12);
+    expect(find.text('Zayed Club · Pitch 2'), findsOneWidget);
+    expect(find.text('18 / 18 in'), findsOneWidget);
+
+    await tapText(tester, 'Make teams');
+    await navigate(tester);
+    expect(find.text('RED'), findsOneWidget);
+    expect(find.text('BLACK'), findsOneWidget);
+    expect(find.textContaining('6 players'), findsWidgets);
+    await tester.scrollUntilVisible(find.text('WHITE'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.textContaining('6 players'), findsWidgets);
+    await tapText(tester, 'Save');
+    await navigate(tester);
+
+    // Everyone sees the teams on the poll.
+    await tester.scrollUntilVisible(find.text('WHITE'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('RED'), findsOneWidget);
+    expect(find.text('BLACK'), findsOneWidget);
+
+    // Only organizers see levels: badges in the member list.
+    await tester.tap(find.text('Group'));
+    await tester.pump();
+    await tester.scrollUntilVisible(find.text('Bassem K.'), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.text('L3'), findsWidgets);
     await finish(tester);
   });
 }

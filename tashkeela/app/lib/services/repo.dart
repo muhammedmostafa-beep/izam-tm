@@ -21,6 +21,12 @@ abstract interface class Repo {
 
   /// The latest game that has already kicked off (to record its result).
   Future<Game?> lastPlayedGame(String groupId);
+
+  /// Polls from the last two weeks and everything ahead, earliest first.
+  Stream<List<Game>> games(String groupId);
+
+  /// Organizers only: each member's level (0-4), by member id.
+  Stream<Map<String, int>> levels(String groupId);
 }
 
 class FirestoreRepo implements Repo {
@@ -73,8 +79,23 @@ class FirestoreRepo implements Repo {
         .collection('games')
         .where('kickoffAt', isLessThanOrEqualTo: Timestamp.now())
         .orderBy('kickoffAt', descending: true)
-        .limit(1)
+        .limit(5)
         .get();
-    return q.docs.isEmpty ? null : Game.fromDoc(q.docs.first);
+    return q.docs.map(Game.fromDoc).where((g) => g.status != GameStatus.cancelled).firstOrNull;
   }
+
+  @override
+  Stream<List<Game>> games(String groupId) => _group(groupId)
+      .collection('games')
+      .where('kickoffAt', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 14))))
+      .orderBy('kickoffAt')
+      .snapshots()
+      .map((q) => q.docs.map(Game.fromDoc).toList());
+
+  @override
+  Stream<Map<String, int>> levels(String groupId) => _group(groupId)
+      .collection('private')
+      .doc('levels')
+      .snapshots()
+      .map((d) => ((d.data()?['levels'] as Map?) ?? const {}).map((k, v) => MapEntry(k as String, (v as num).toInt())));
 }

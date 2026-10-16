@@ -10,6 +10,10 @@ export type Notice =
   | { kind: "offered"; groupId: string; gameId: string; memberId: string; expiresAt: number }
   | { kind: "expired"; groupId: string; gameId: string; memberId: string }
   | { kind: "match_day"; groupId: string; gameId: string }
+  /** The organizer moved the game or changed its place; tells everyone on the list. */
+  | { kind: "poll_changed"; groupId: string; gameId: string }
+  /** The organizer called the game off; tells everyone on the list. */
+  | { kind: "poll_cancelled"; groupId: string; gameId: string }
   | {
       kind: "dropped";
       groupId: string;

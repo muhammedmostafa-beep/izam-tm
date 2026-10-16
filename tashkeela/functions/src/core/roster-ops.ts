@@ -57,7 +57,7 @@ export async function applyRosterAction(
     const entriesSnap = await tx.get(ref.collection("entries"));
     const entries = entriesSnap.docs.map((d) => entryFromDoc(d.data() as EntryDoc));
     const kickoffAt = game.kickoffAt.toMillis();
-    const ctx: RosterContext = { now, kickoffAt, rules: rosterRules(group) };
+    const ctx: RosterContext = { now, kickoffAt, rules: rosterRules(group, game) };
 
     if (action !== "expire") {
       if (game.status === "scheduled") throw new AppError("poll_not_open");

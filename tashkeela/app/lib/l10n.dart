@@ -30,6 +30,9 @@ class S {
   /// "Thursday 22 October"
   String day(DateTime d) => DateFormat('EEEE d MMMM', _locale).format(d.toLocal());
 
+  /// "Thu 22 Oct"
+  String shortDay(DateTime d) => DateFormat('EEE d MMM', _locale).format(d.toLocal());
+
   /// "Thursday" for ISO weekday 4.
   String weekday(int iso) => DateFormat('EEEE', _locale).format(DateTime(2024, 1, iso));
 

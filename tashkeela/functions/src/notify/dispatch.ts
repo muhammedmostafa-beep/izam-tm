@@ -51,16 +51,24 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
   const byId = (id: string) => all.filter((r) => r.memberId === id);
   const when = (r: Recipient) => formatWhen(kickoff, tz, r.member.language);
   const data = { groupId: n.groupId, gameId: n.gameId, kind: n.kind };
+  const venue = game.venue ?? group.venue;
+  const squadSize = game.squadSize ?? group.rules.squadSize;
+  /** Everyone on the poll's list (squad and reserves). */
+  const onList = async () => {
+    const entries = await gameRef(db, n.groupId, n.gameId).collection("entries").get();
+    const ids = new Set(entries.docs.map((d) => d.data() as EntryDoc).filter((e) => e.state !== "out").map((e) => e.memberId));
+    return all.filter((r) => ids.has(r.memberId));
+  };
 
   let out: Outgoing;
   switch (n.kind) {
     case "poll_open":
       out = {
         recipients: all,
-        push: (r) => pushText.pollOpen(r.member.language, { group: group.name, when: when(r), spots: group.rules.squadSize }),
+        push: (r) => pushText.pollOpen(r.member.language, { group: group.name, when: when(r), spots: squadSize }),
         whatsapp: !group.reminders.pollOpening ? undefined : (r) => ({
           template: TEMPLATES.pollOpen,
-          params: [when(r), group.venue, formatNumber(group.rules.squadSize, r.member.language)],
+          params: [when(r), venue, formatNumber(squadSize, r.member.language)],
           buttons: [buttonPayload("JOIN", n.groupId, n.gameId), buttonPayload("SKIP", n.groupId, n.gameId)],
         }),
       };
@@ -85,14 +93,14 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
       const entries = await gameRef(db, n.groupId, n.gameId).collection("entries").get();
       const squad = rosterView(
         entries.docs.map((d) => entryFromDoc(d.data() as EntryDoc)),
-        group.rules.squadSize,
+        squadSize,
       ).squad.map((e) => e.memberId);
       out = {
         recipients: all.filter((r) => squad.includes(r.memberId)),
-        push: (r) => pushText.matchDay(r.member.language, { time: formatClock(kickoff, tz, r.member.language), venue: group.venue }),
+        push: (r) => pushText.matchDay(r.member.language, { time: formatClock(kickoff, tz, r.member.language), venue }),
         whatsapp: !group.reminders.matchDay ? undefined : (r) => ({
           template: TEMPLATES.matchDay,
-          params: [formatClock(kickoff, tz, r.member.language), group.venue, formatNumber(group.rules.squadSize, r.member.language)],
+          params: [formatClock(kickoff, tz, r.member.language), venue, formatNumber(squadSize, r.member.language)],
         }),
       };
       break;
@@ -106,6 +114,12 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
       };
       break;
     }
+    case "poll_changed":
+      out = { recipients: await onList(), push: (r) => pushText.pollChanged(r.member.language, { when: when(r), venue }) };
+      break;
+    case "poll_cancelled":
+      out = { recipients: await onList(), push: (r) => pushText.pollCancelled(r.member.language, { when: when(r) }) };
+      break;
   }
 
   try {

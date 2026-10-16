@@ -13,6 +13,11 @@ service cloud.firestore {
         && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberUids;
     }
 
+    function isAdmin(groupId) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.adminUids;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       // The app keeps its own push IDs and language up to date.
@@ -25,8 +30,18 @@ service cloud.firestore {
     match /groups/{groupId} {
       allow read: if isMember(groupId);
 
-      match /{document=**} {
+      match /members/{memberId} {
         allow read: if isMember(groupId);
+      }
+
+      // Polls, their lists and logs.
+      match /games/{gameId}/{document=**} {
+        allow read: if isMember(groupId);
+      }
+
+      // Players' levels: organizers only.
+      match /private/{document} {
+        allow read: if isAdmin(groupId);
       }
     }
   }

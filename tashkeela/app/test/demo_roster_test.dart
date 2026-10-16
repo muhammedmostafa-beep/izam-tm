@@ -7,7 +7,7 @@ import 'package:tashkeela/models.dart';
 
 const rules = Rules(
   squadSize: 3,
-  teamNames: ['Lime', 'Orange'],
+  kits: [Kit.red, Kit.black],
   confirmWindowMinutes: 120,
   matchDayConfirmWindowMinutes: 30,
   lateDropOutHours: 24,
