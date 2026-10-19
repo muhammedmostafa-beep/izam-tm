@@ -179,11 +179,16 @@ export function formatMoney(amount: number, lang: Language): string {
   return lang === "ar" ? `${formatNumber(amount, "ar")} جنيه` : `${formatNumber(amount, "en")} EGP`;
 }
 
-/** Where to pay, from the group's settings: "InstaPay ahmed@instapay or wallet 0100…". */
+/**
+ * Where to pay, from the group's settings: "InstaPay ahmed@instapay or wallet 0100…".
+ * Addresses and numbers are isolated (U+2068…U+2069) so Arabic text around them
+ * doesn't reorder them: "010 0000 0001" would otherwise read "0001 0000 010".
+ */
 export function payToText(lang: Language, p: { instapay: string | null; wallet: string | null; note: string | null } | null): string {
+  const iso = (v: string) => `\u2068${v}\u2069`;
   const ways = [
-    p?.instapay ? `InstaPay ${p.instapay}` : null,
-    p?.wallet ? (lang === "ar" ? `محفظة ${p.wallet}` : `wallet ${p.wallet}`) : null,
+    p?.instapay ? `InstaPay ${iso(p.instapay)}` : null,
+    p?.wallet ? (lang === "ar" ? `محفظة ${iso(p.wallet)}` : `wallet ${iso(p.wallet)}`) : null,
   ].filter((w): w is string => w !== null);
   if (!ways.length) return p?.note ?? (lang === "ar" ? "المنظم" : "the organizer");
   return ways.join(lang === "ar" ? " أو " : " or ");

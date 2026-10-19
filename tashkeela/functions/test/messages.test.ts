@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
 import { normalizePhone, toWaId } from "../src/core/phone";
-import { buttonPayload, formatWhen, parseButtonPayload, pushText, replyText } from "../src/notify/messages";
+import { buttonPayload, formatWhen, parseButtonPayload, payToText, pushText, replyText } from "../src/notify/messages";
 import { parseInbound, verifySignature } from "../src/notify/inbound";
 import { CloudApiWhatsApp } from "../src/notify/senders";
 
@@ -14,6 +14,16 @@ describe("phone numbers", () => {
     assert.equal(normalizePhone("201001234567", "20"), "+201001234567");
     assert.equal(normalizePhone("12", "20"), null);
     assert.equal(toWaId("+201001234567"), "201001234567");
+  });
+});
+
+describe("where to pay", () => {
+  it("keeps addresses and numbers in order inside Arabic text", () => {
+    const payTo = { instapay: "ahmed@instapay", wallet: "010 0000 0001", note: null };
+    assert.equal(payToText("ar", payTo), "InstaPay \u2068ahmed@instapay\u2069 أو محفظة \u2068010 0000 0001\u2069");
+    assert.equal(payToText("en", { ...payTo, instapay: null }), "wallet \u2068010 0000 0001\u2069");
+    assert.equal(payToText("en", { instapay: null, wallet: null, note: "Cash at the pitch" }), "Cash at the pitch");
+    assert.equal(payToText("ar", null), "المنظم");
   });
 });
 

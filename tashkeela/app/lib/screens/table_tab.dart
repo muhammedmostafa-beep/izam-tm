@@ -240,8 +240,9 @@ class _PlayerRow extends StatelessWidget {
       if (games > 0) s.t('${s.n((p.played * 100 / games).round())}% attendance', 'حضور ${s.n((p.played * 100 / games).round())}٪'),
       if (p.dropOuts > 0)
         p.lateDropOuts > 0
-            ? s.t('${s.n(p.dropOuts)} drop-outs, ${s.n(p.lateDropOuts)} late', '${s.n(p.dropOuts)} اعتذار، ${s.n(p.lateDropOuts)} متأخر')
-            : s.t('${s.n(p.dropOuts)} drop-outs', '${s.n(p.dropOuts)} اعتذار'),
+            ? s.t('${s.n(p.dropOuts)} ${p.dropOuts == 1 ? 'drop-out' : 'drop-outs'}, ${s.n(p.lateDropOuts)} late',
+                '${s.n(p.dropOuts)} اعتذار، ${s.n(p.lateDropOuts)} متأخر')
+            : s.t('${s.n(p.dropOuts)} ${p.dropOuts == 1 ? 'drop-out' : 'drop-outs'}', '${s.n(p.dropOuts)} اعتذار'),
     ];
     return Container(
       color: isMe ? Palette.lime.withValues(alpha: 0.06) : null,
