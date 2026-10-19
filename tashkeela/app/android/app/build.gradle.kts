@@ -8,6 +8,12 @@ plugins {
 // next to the real one.
 val demo = project.findProperty("demo") == "true"
 
+// Release builds for players are signed with the group's own key (see the "Tashkeela APK"
+// workflow): TASHKEELA_KEYSTORE is the keystore's path, TASHKEELA_KEYSTORE_PASSWORD its password.
+// Every update has to be signed with the same key. Without one, release builds use the debug key,
+// which is fine for the demo only.
+val releaseKeystore = System.getenv("TASHKEELA_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+
 android {
     namespace = "app.tashkeela.tashkeela"
     compileSdk = flutter.compileSdkVersion
@@ -35,11 +41,20 @@ android {
         if (demo) applicationIdSuffix = ".demo"
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("TASHKEELA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("TASHKEELA_KEY_ALIAS") ?: "tashkeela"
+                keyPassword = System.getenv("TASHKEELA_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
         }
     }
 }

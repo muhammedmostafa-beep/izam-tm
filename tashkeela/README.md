@@ -211,19 +211,47 @@ in the four values in `app/web/firebase-messaging-sw.js`.
 
 ### 5. Android app
 
+The **Tashkeela APK** workflow (`.github/workflows/tashkeela-apk.yml`) builds
+the player app on GitHub Actions, connected to your project and signed with
+the group's own key. Add three repository secrets (GitHub: Settings > Secrets
+and variables > Actions):
+
+| Secret | Value |
+| --- | --- |
+| `TASHKEELA_FIREBASE_CONFIG` | the contents of `app/config/firebase.json` (step 3) |
+| `TASHKEELA_KEYSTORE_BASE64` | the signing keystore, base64-encoded |
+| `TASHKEELA_KEYSTORE_PASSWORD` | its password |
+
+Make the keystore once and keep it safe (a password manager is a good
+place): every update has to be signed with it, or players have to uninstall
+and reinstall.
+
 ```sh
-cd tashkeela/app
-flutter build apk --release --dart-define-from-file=config/firebase.json
-cd ../functions && npx firebase appdistribution:distribute \
-  ../app/build/app/outputs/flutter-apk/app-release.apk --app <FIREBASE_ANDROID_APP_ID> --testers-file players.txt
+keytool -genkeypair -storetype PKCS12 -keystore tashkeela.keystore -alias tashkeela \
+  -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Tashkeela"
+base64 -w0 tashkeela.keystore          # the TASHKEELA_KEYSTORE_BASE64 value
+keytool -list -v -keystore tashkeela.keystore | grep -E 'SHA1|SHA256'
 ```
 
-Firebase App Distribution is free: players get an install link and update
-alerts, with no Play Store account needed. Phone sign-in on Android also
-needs the app's SHA-256 fingerprint in Project settings > Your apps
-(`cd android && ./gradlew signingReport`). Set up your own release signing
-key before sharing builds widely
-(see the [Flutter docs](https://docs.flutter.dev/deployment/android#sign-the-app)).
+Phone sign-in on Android needs the key's SHA-1 and SHA-256 fingerprints in
+Firebase (Project settings > Your apps > the Android app > Add fingerprint).
+
+Then run the workflow (Actions > Tashkeela APK > Run workflow, or re-run its
+latest run) and download the `tashkeela-apk` artifact. Until the secrets
+exist, the workflow skips the build and its summary lists what's missing.
+
+To hand the app out with update alerts, Firebase App Distribution is free
+and needs no Play Store account:
+
+```sh
+cd tashkeela/functions && npx firebase appdistribution:distribute \
+  tashkeela.apk --app <FIREBASE_ANDROID_APP_ID> --testers-file players.txt
+```
+
+To build on your own computer instead, set `TASHKEELA_KEYSTORE` (the
+keystore's path) and `TASHKEELA_KEYSTORE_PASSWORD`, then run
+`flutter build apk --release --dart-define-from-file=config/firebase.json`
+in `app/`.
 
 ### 6. WhatsApp (optional, about 62 EGP a month)
 
