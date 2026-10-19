@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Game settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=DM+Sans:wght@400;500;700&family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap">
+<style>
+body{margin:0}
+a{color:#C8F04A}a:hover{color:#E2FF8A}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; background: #0B1410; color: #EEF3EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column">
+
+  <header style="flex: none; display: flex; align-items: center; gap: 12px; padding: 16px 20px 8px">
+    <a href="#group" aria-label="Back to Group" style="flex: none; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #27392F; background: #15231C; color: #EEF3EC; display: flex; align-items: center; justify-content: center; box-sizing: border-box">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+    </a>
+    <div style="flex: 1; min-width: 0">
+      <h1 style="margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px; line-height: 1.05; letter-spacing: 0.01em; text-transform: uppercase">Game settings</h1>
+      <p style="margin: 3px 0 0; font-size: 13px; color: #A3B8AA">Organizer · Thursday Night Football</p>
+    </div>
+  </header>
+
+  <form style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; margin: 0; padding: 4px 16px 0">
+
+    <h2 style="margin: 0 0 6px 4px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; color: #A3B8AA">Match</h2>
+    <div style="border-radius: 16px; background: #15231C; border: 1px solid #27392F; overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px; border-bottom: 1px solid #27392F">
+        <label for="f-name" style="flex: none; font-size: 14px; color: #A3B8AA">Group name</label>
+        <input id="f-name" type="text" value="Thursday Night Football" style="flex: 1; min-width: 0; height: 44px; padding: 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right">
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px; border-bottom: 1px solid #27392F">
+        <label for="f-when" style="flex: none; font-size: 14px; color: #A3B8AA">Match day &amp; time</label>
+        <span style="position: relative; display: flex; align-items: center">
+          <select id="f-when" style="appearance: none; -webkit-appearance: none; height: 44px; padding: 0 22px 0 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right; text-align-last: right; cursor: pointer"><option>Thursday · 9:00 PM</option><option>Friday · 9:00 PM</option></select>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A3B8AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; right: 0; pointer-events: none"><path d="m6 9 6 6 6-6"></path></svg>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px; border-bottom: 1px solid #27392F">
+        <label for="f-venue" style="flex: none; font-size: 14px; color: #A3B8AA">Venue</label>
+        <input id="f-venue" type="text" value="New Cairo Arena · Pitch 3" style="flex: 1; min-width: 0; height: 44px; padding: 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right">
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px">
+        <label for="f-poll" style="flex: none; font-size: 14px; color: #A3B8AA">Poll opens</label>
+        <span style="position: relative; display: flex; align-items: center">
+          <select id="f-poll" style="appearance: none; -webkit-appearance: none; height: 44px; padding: 0 22px 0 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right; text-align-last: right; cursor: pointer"><option>Sunday · 12:00 PM</option><option>Monday · 12:00 PM</option></select>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A3B8AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; right: 0; pointer-events: none"><path d="m6 9 6 6 6-6"></path></svg>
+        </span>
+      </div>
+    </div>
+
+    <h2 style="margin: 12px 0 6px 4px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; color: #A3B8AA">Squad &amp; reserves</h2>
+    <div style="border-radius: 16px; background: #15231C; border: 1px solid #27392F; overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 50px; padding: 0 8px 0 14px; border-bottom: 1px solid #27392F">
+        <span id="l-size" style="font-size: 14px; color: #A3B8AA">Squad size</span>
+        <div role="group" aria-labelledby="l-size" style="display: flex; align-items: center; gap: 4px">
+          <button type="button" aria-label="Decrease squad size" style="width: 44px; height: 44px; padding: 0; border: 1px solid #27392F; border-radius: 12px; background: #1C2E25; color: #EEF3EC; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg></button>
+          <output aria-live="polite" style="width: 36px; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px">18</output>
+          <button type="button" aria-label="Increase squad size" style="width: 44px; height: 44px; padding: 0; border: 1px solid #27392F; border-radius: 12px; background: #1C2E25; color: #EEF3EC; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px; border-bottom: 1px solid #27392F">
+        <label for="f-teams" style="flex: none; font-size: 14px; color: #A3B8AA">Teams</label>
+        <span style="position: relative; display: flex; align-items: center">
+          <select id="f-teams" style="appearance: none; -webkit-appearance: none; height: 44px; padding: 0 22px 0 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right; text-align-last: right; cursor: pointer"><option>3 × 6 · winner stays on</option><option>2 × 9</option></select>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A3B8AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; right: 0; pointer-events: none"><path d="m6 9 6 6 6-6"></path></svg>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 54px; padding: 0 14px; border-bottom: 1px solid #27392F">
+        <span style="display: flex; flex-direction: column">
+          <label for="f-window" style="font-size: 14px; color: #A3B8AA">Reserve confirm window</label>
+          <span id="h-window" style="font-size: 12px; color: #A3B8AA">30 min on match day</span>
+        </span>
+        <span style="position: relative; display: flex; align-items: center">
+          <select id="f-window" aria-describedby="h-window" style="appearance: none; -webkit-appearance: none; height: 44px; padding: 0 22px 0 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right; text-align-last: right; cursor: pointer"><option>2 hours</option><option>1 hour</option><option>4 hours</option></select>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A3B8AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; right: 0; pointer-events: none"><path d="m6 9 6 6 6-6"></path></svg>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px; border-bottom: 1px solid #27392F">
+        <label for="f-late" style="flex: none; font-size: 14px; color: #A3B8AA">Late drop-out after</label>
+        <span style="position: relative; display: flex; align-items: center">
+          <select id="f-late" style="appearance: none; -webkit-appearance: none; height: 44px; padding: 0 22px 0 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right; text-align-last: right; cursor: pointer"><option>Wed 9:00 PM</option><option>Thu 12:00 PM</option></select>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A3B8AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; right: 0; pointer-events: none"><path d="m6 9 6 6 6-6"></path></svg>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 14px">
+        <label for="f-rule" style="flex: none; font-size: 14px; color: #A3B8AA">Priority rule</label>
+        <span style="position: relative; display: flex; align-items: center">
+          <select id="f-rule" style="appearance: none; -webkit-appearance: none; height: 44px; padding: 0 22px 0 0; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-align: right; text-align-last: right; cursor: pointer"><option>First come, first served</option><option>Regulars first</option></select>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A3B8AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute; right: 0; pointer-events: none"><path d="m6 9 6 6 6-6"></path></svg>
+        </span>
+      </div>
+    </div>
+
+    <h2 style="margin: 12px 0 6px 4px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; color: #A3B8AA">WhatsApp reminders</h2>
+    <div style="border-radius: 16px; background: #15231C; border: 1px solid #27392F; overflow: hidden">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 8px 0 14px; border-bottom: 1px solid #27392F">
+        <span id="t-poll" style="font-size: 14px; font-weight: 500">Poll opening</span>
+        <button type="button" role="switch" aria-checked="true" aria-labelledby="t-poll" style="width: 56px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+          <span style="width: 46px; height: 28px; border-radius: 999px; background: #C8F04A; display: flex; align-items: center; justify-content: flex-end; padding: 3px; box-sizing: border-box"><span style="width: 22px; height: 22px; border-radius: 999px; background: #0B1410"></span></span>
+        </button>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 8px 0 14px; border-bottom: 1px solid #27392F">
+        <span id="t-promo" style="font-size: 14px; font-weight: 500">Promotion</span>
+        <button type="button" role="switch" aria-checked="true" aria-labelledby="t-promo" style="width: 56px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+          <span style="width: 46px; height: 28px; border-radius: 999px; background: #C8F04A; display: flex; align-items: center; justify-content: flex-end; padding: 3px; box-sizing: border-box"><span style="width: 22px; height: 22px; border-radius: 999px; background: #0B1410"></span></span>
+        </button>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 8px 0 14px; border-bottom: 1px solid #27392F">
+        <span id="t-day" style="font-size: 14px; font-weight: 500">Match day · 4h before</span>
+        <button type="button" role="switch" aria-checked="true" aria-labelledby="t-day" style="width: 56px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+          <span style="width: 46px; height: 28px; border-radius: 999px; background: #C8F04A; display: flex; align-items: center; justify-content: flex-end; padding: 3px; box-sizing: border-box"><span style="width: 22px; height: 22px; border-radius: 999px; background: #0B1410"></span></span>
+        </button>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 8px 0 14px">
+        <span style="display: flex; align-items: center; gap: 8px">
+          <span id="t-pay" style="font-size: 14px; font-weight: 500">Payment due</span>
+        </span>
+        <button type="button" role="switch" aria-checked="false" aria-labelledby="t-pay" style="width: 56px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+          <span style="width: 46px; height: 28px; border-radius: 999px; background: #0B1410; border: 1px solid #3D5446; display: flex; align-items: center; justify-content: flex-start; padding: 3px; box-sizing: border-box"><span style="width: 20px; height: 20px; border-radius: 999px; background: #A3B8AA"></span></span>
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-top: auto; padding: 12px 0 14px">
+      <button type="submit" style="width: 100%; height: 52px; border: 0; border-radius: 12px; background: #C8F04A; color: #0B1410; font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer">Save settings</button>
+    </div>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

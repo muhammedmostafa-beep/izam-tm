@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Champions photos: organizers upload, every member of the group can view.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /groups/{groupId}/champions/{file} {
+      function group() {
+        return firestore.get(/databases/(default)/documents/groups/$(groupId)).data;
+      }
+
+      allow read: if request.auth != null && request.auth.uid in group().memberUids;
+      allow write: if request.auth != null && request.auth.uid in group().adminUids
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

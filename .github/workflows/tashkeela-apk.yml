@@ -1,0 +1,124 @@
+# Builds the Tashkeela app for players: Android, connected to the group's own
+# Firebase project and signed with the group's own key. The APK is attached to
+# the run as the "tashkeela-apk" artifact.
+#
+# Needs three repository secrets (Settings > Secrets and variables > Actions):
+#   TASHKEELA_FIREBASE_CONFIG    the contents of app/config/firebase.json (see firebase.example.json)
+#   TASHKEELA_KEYSTORE_BASE64    the signing keystore, base64-encoded
+#   TASHKEELA_KEYSTORE_PASSWORD  its password
+# Until they exist, the build is skipped and the run's summary says what's missing.
+name: Tashkeela APK
+
+on:
+  push:
+    paths:
+      - "tashkeela/app/**"
+      - ".github/workflows/tashkeela-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tashkeela-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  settings:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          FIREBASE_CONFIG: ${{ secrets.TASHKEELA_FIREBASE_CONFIG }}
+          KEYSTORE_BASE64: ${{ secrets.TASHKEELA_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.TASHKEELA_KEYSTORE_PASSWORD }}
+        run: |
+          missing=()
+          [ -n "$FIREBASE_CONFIG" ] || missing+=(TASHKEELA_FIREBASE_CONFIG)
+          [ -n "$KEYSTORE_BASE64" ] || missing+=(TASHKEELA_KEYSTORE_BASE64)
+          [ -n "$KEYSTORE_PASSWORD" ] || missing+=(TASHKEELA_KEYSTORE_PASSWORD)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### The player APK wasn't built"
+              echo "Add these repository secrets (Settings > Secrets and variables > Actions), then run this workflow again:"
+              for m in "${missing[@]}"; do echo "- \`$m\`"; done
+              echo
+              echo "See \"Set it up for real\" in tashkeela/README.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Player APK skipped: missing secrets ${missing[*]}"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  apk:
+    needs: settings
+    if: needs.settings.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: tashkeela/app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write the Firebase settings and the signing key
+        env:
+          FIREBASE_CONFIG: ${{ secrets.TASHKEELA_FIREBASE_CONFIG }}
+          KEYSTORE_BASE64: ${{ secrets.TASHKEELA_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$FIREBASE_CONFIG" > config/firebase.json
+          python3 - <<'EOF'
+          import json, sys
+          c = json.load(open("config/firebase.json"))
+          need = ["FIREBASE_PROJECT_ID", "FIREBASE_API_KEY", "FIREBASE_MESSAGING_SENDER_ID", "FIREBASE_ANDROID_APP_ID", "APP_URL"]
+          missing = [k for k in need if not str(c.get(k, "")).strip()]
+          if missing:
+              sys.exit(f"::error::TASHKEELA_FIREBASE_CONFIG is missing {', '.join(missing)}")
+          if c["FIREBASE_PROJECT_ID"].startswith("demo-") or c["FIREBASE_PROJECT_ID"] == "your-project-id":
+              sys.exit("::error::TASHKEELA_FIREBASE_CONFIG still has the example project ID")
+          print("Firebase project:", c["FIREBASE_PROJECT_ID"])
+          EOF
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/tashkeela.keystore"
+          echo "TASHKEELA_KEYSTORE=$RUNNER_TEMP/tashkeela.keystore" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Build the APK
+        env:
+          TASHKEELA_KEYSTORE_PASSWORD: ${{ secrets.TASHKEELA_KEYSTORE_PASSWORD }}
+        run: |
+          flutter build apk --release --dart-define-from-file=config/firebase.json --build-number=${{ github.run_number }}
+          cp build/app/outputs/flutter-apk/app-release.apk build/tashkeela.apk
+
+      - name: Check it's signed with the group's key
+        env:
+          TASHKEELA_KEYSTORE_PASSWORD: ${{ secrets.TASHKEELA_KEYSTORE_PASSWORD }}
+        run: |
+          key=$(keytool -list -v -keystore "$TASHKEELA_KEYSTORE" -storepass "$TASHKEELA_KEYSTORE_PASSWORD" | grep -m1 'SHA256:' | awk '{print $2}')
+          apk=$(keytool -printcert -jarfile build/tashkeela.apk | grep -m1 'SHA256:' | awk '{print $2}')
+          echo "Signed with SHA-256 $apk"
+          [ -n "$key" ] && [ "$key" = "$apk" ] || { echo "::error::The APK isn't signed with the group's key"; exit 1; }
+          echo "Signing key SHA-256: \`$apk\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tashkeela-apk
+          path: tashkeela/app/build/tashkeela.apk
+          if-no-files-found: error
+          retention-days: 30

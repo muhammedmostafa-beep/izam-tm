@@ -1,0 +1,22 @@
+# Cloud Functions
+functions/node_modules/
+functions/lib/
+functions/.secret.local
+functions/.env.*.local
+*.local
+
+# Firebase CLI
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+database-debug.log*
+pubsub-debug.log*
+
+# Real project configuration stays out of git
+.firebaserc
+app/config/firebase.json
+app/lib/firebase_options.dart.bak
+
+# The root .gitignore drops .env*; keep the example.
+!functions/.env.example

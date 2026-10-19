@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Poll live</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=DM+Sans:wght@400;500;700&family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap">
+<style>
+body{margin:0}
+a{color:#C8F04A}a:hover{color:#E2FF8A}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; background: #0B1410; color: #EEF3EC; font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column">
+
+  <header style="flex: none; display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px">
+    <a href="#home" aria-label="Back to Home" style="flex: none; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #27392F; background: #15231C; color: #EEF3EC; display: flex; align-items: center; justify-content: center; box-sizing: border-box">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+    </a>
+    <div style="flex: 1; min-width: 0">
+      <h1 style="margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px; line-height: 1.05; letter-spacing: 0.01em; text-transform: uppercase">Poll live</h1>
+      <p style="margin: 3px 0 0; font-size: 13px; color: #A3B8AA">Thu 16 Oct · 9:00 PM · Week 12</p>
+    </div>
+    <span style="flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; background: rgba(200, 240, 74, 0.14); color: #C8F04A; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em">
+      <span style="width: 8px; height: 8px; border-radius: 999px; background: #C8F04A"></span>
+      LIVE
+    </span>
+  </header>
+
+  <main style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 16px">
+
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #A3B8AA">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+      Poll opened
+      <strong style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 17px; color: #EEF3EC; letter-spacing: 0.02em">12:00:00 PM</strong>
+      <span>· Sun 12 Oct</span>
+    </div>
+
+    <section aria-label="Spots" style="background: #15231C; border: 1px solid #27392F; border-radius: 16px; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+        <div style="display: flex; align-items: baseline; gap: 6px">
+          <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 52px; line-height: 0.85">{{ taken }}</span>
+          <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 28px; line-height: 0.85; color: #A3B8AA">/ 18</span>
+          <span style="margin-left: 4px; font-size: 14px; color: #A3B8AA">spots taken</span>
+        </div>
+        <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; background: #C8F04A; color: #0B1410; font-size: 13px; font-weight: 700; white-space: nowrap">{{ left }} spots left</span>
+      </div>
+      <sc-if value="{{ notJoined }}" hint-placeholder-val="{{ true }}">
+        <div role="img" aria-label="15 of 18 spots taken" style="display: flex; gap: 3px; height: 8px">
+          <span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #27392F"></span><span style="flex: 1; border-radius: 2px; background: #27392F"></span><span style="flex: 1; border-radius: 2px; background: #27392F"></span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ joined }}" hint-placeholder-val="{{ false }}">
+        <div role="img" aria-label="16 of 18 spots taken" style="display: flex; gap: 3px; height: 8px">
+          <span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #C8F04A"></span><span style="flex: 1; border-radius: 2px; background: #EEF3EC"></span><span style="flex: 1; border-radius: 2px; background: #27392F"></span><span style="flex: 1; border-radius: 2px; background: #27392F"></span>
+        </div>
+      </sc-if>
+    </section>
+
+    <sc-if value="{{ notJoined }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+        <div style="width: 236px; height: 236px; border-radius: 999px; border: 1px solid rgba(200, 240, 74, 0.25); box-sizing: border-box; display: flex; align-items: center; justify-content: center">
+          <div style="width: 208px; height: 208px; border-radius: 999px; background: rgba(200, 240, 74, 0.08); display: flex; align-items: center; justify-content: center">
+            <button type="button" onClick="{{ join }}" style="width: 180px; height: 180px; padding: 0; border: 0; border-radius: 999px; background: #C8F04A; color: #0B1410; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer">
+              <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 56px; line-height: 0.85; letter-spacing: 0.02em">I'M IN</span>
+              <span style="font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 700">Claim spot #16</span>
+            </button>
+          </div>
+        </div>
+        <p style="margin: 0; font-size: 13px; color: #A3B8AA">One tap. Your place is set by server time.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ joined }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 2px">
+        <div role="status" style="width: 236px; height: 236px; border-radius: 999px; border: 1px solid rgba(200, 240, 74, 0.25); box-sizing: border-box; display: flex; align-items: center; justify-content: center">
+          <div style="width: 208px; height: 208px; border-radius: 999px; border: 3px solid #C8F04A; box-sizing: border-box; background: #15231C; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px">
+            <span style="width: 40px; height: 40px; border-radius: 999px; background: #C8F04A; color: #0B1410; display: flex; align-items: center; justify-content: center">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+            </span>
+            <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 44px; line-height: 0.9; letter-spacing: 0.01em">YOU'RE #16</span>
+            <span style="font-size: 14px; font-weight: 700; color: #C8F04A">In the squad</span>
+          </div>
+        </div>
+        <button type="button" onClick="{{ leave }}" style="height: 44px; padding: 0 16px; border: 0; background: transparent; color: #EEF3EC; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer">Not this week</button>
+      </div>
+    </sc-if>
+
+    <section aria-labelledby="joiners-title" style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center; justify-content: space-between">
+        <h2 id="joiners-title" style="margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; color: #A3B8AA">Latest joiners</h2>
+        <span style="font-size: 12px; color: #A3B8AA">Server time</span>
+      </div>
+      <ol role="list" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; background: #27392F; border: 1px solid #27392F; border-radius: 16px; overflow: hidden">
+        <sc-if value="{{ joined }}" hint-placeholder-val="{{ false }}">
+          <li style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px; background: #1C2E25">
+            <span style="width: 32px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px; color: #C8F04A">#16</span>
+            <span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #C8F04A; color: #0B1410; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">OK</span>
+            <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 700">Omar K. <span style="font-weight: 500; color: #C8F04A">(you)</span></span>
+            <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 18px; color: #EEF3EC">12:00:05<span style="font-size: 14px; color: #A3B8AA">.06</span></span>
+          </li>
+        </sc-if>
+        <li style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px; background: #15231C">
+          <span style="width: 32px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px; color: #A3B8AA">#15</span>
+          <span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #5C4F3A; color: #EEF3EC; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">MA</span>
+          <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 500">Mido A.</span>
+          <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 18px">12:00:04<span style="font-size: 14px; color: #A3B8AA">.81</span></span>
+        </li>
+        <li style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px; background: #15231C">
+          <span style="width: 32px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px; color: #A3B8AA">#14</span>
+          <span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #523A5C; color: #EEF3EC; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">ID</span>
+          <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 500">Islam D.</span>
+          <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 18px">12:00:03<span style="font-size: 14px; color: #A3B8AA">.27</span></span>
+        </li>
+        <li style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px; background: #15231C">
+          <span style="width: 32px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px; color: #A3B8AA">#13</span>
+          <span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #3A5C3F; color: #EEF3EC; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">KW</span>
+          <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 500">Khaled W.</span>
+          <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 18px">12:00:02<span style="font-size: 14px; color: #A3B8AA">.64</span></span>
+        </li>
+        <sc-if value="{{ notJoined }}" hint-placeholder-val="{{ true }}">
+          <li style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px; background: #15231C">
+            <span style="width: 32px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px; color: #A3B8AA">#12</span>
+            <span style="flex: none; width: 30px; height: 30px; border-radius: 999px; background: #5C3A46; color: #EEF3EC; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700">SL</span>
+            <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 500">Sherif L.</span>
+            <span style="font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 18px">12:00:01<span style="font-size: 14px; color: #A3B8AA">.93</span></span>
+          </li>
+        </sc-if>
+      </ol>
+    </section>
+
+    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 16px; background: #15231C; border: 1px solid #27392F">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7CC4FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg>
+      <p style="margin: 0; font-size: 13px; line-height: 1.45; color: #A3B8AA"><strong style="color: #EEF3EC">How order works:</strong> server time, first 18 are in, then reserves R1, R2…</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const joined = !!(this.state && this.state.joined);
+return {
+joined: joined,
+notJoined: !joined,
+taken: joined ? 16 : 15,
+left: joined ? 2 : 3,
+join: () => this.setState({ joined: true }),
+leave: () => this.setState({ joined: false })
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+# Builds the Tashkeela demo app for Android: the real screens on a simulated
+# week, with no Firebase project needed. The APK is attached to the run as the
+# "tashkeela-demo-apk" artifact.
+name: Tashkeela demo APK
+
+on:
+  push:
+    paths:
+      - "tashkeela/app/**"
+      - ".github/workflows/tashkeela-demo-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tashkeela-demo-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: tashkeela/app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Build the demo APK
+        run: |
+          flutter build apk --release -t lib/main_demo.dart -P demo=true --build-number=${{ github.run_number }}
+          cp build/app/outputs/flutter-apk/app-release.apk build/tashkeela-demo.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tashkeela-demo-apk
+          path: tashkeela/app/build/tashkeela-demo.apk
+          if-no-files-found: error
+          retention-days: 30
