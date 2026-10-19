@@ -97,6 +97,11 @@ class GroupTab extends StatelessWidget {
               trailing: Wrap(spacing: 6, children: [
                 if (view.isAdmin) Pill(levelBadge(s, view.levelOf(m.id)), color: levelColor(view.levelOf(m.id))),
                 if (m.isGoalkeeper) Pill(s.t('GK', 'حارس'), color: Palette.sky),
+                if (m.isRegular)
+                  Tooltip(
+                    message: s.t('Regular', 'أساسي'),
+                    child: const Icon(Icons.star_rounded, size: 20, color: Palette.amber),
+                  ),
                 if (m.isAdmin) Pill(s.t('Organizer', 'منظم')),
                 if (m.uid == null) Pill(s.t('No app', 'من غير تطبيق'), color: Palette.muted),
               ]),
@@ -127,7 +132,81 @@ class GroupTab extends StatelessWidget {
         icon: const Icon(Icons.logout),
         label: Text(s.t('Sign out', 'خروج')),
       ),
+      if (me != null)
+        TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: Palette.coral),
+          onPressed: () => _leave(context),
+          icon: const Icon(Icons.exit_to_app),
+          label: Text(s.t('Leave this group', 'اخرج من الجروب')),
+        ),
+      TextButton.icon(
+        style: TextButton.styleFrom(foregroundColor: Palette.coral),
+        onPressed: () => _deleteAccount(context),
+        icon: const Icon(Icons.delete_forever_outlined),
+        label: Text(s.t('Delete my account and data', 'امسح حسابي وبياناتي')),
+      ),
     ]);
+  }
+
+  /// A sheet that asks before something that can't be undone. True: go ahead.
+  Future<bool> _confirm(BuildContext context, {required String title, required String body, required String action}) async {
+    final s = context.s;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (sheet) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(title.toUpperCase(), style: display(28)),
+          const SizedBox(height: 12),
+          Text(body),
+          const SizedBox(height: 20),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Palette.coral),
+            onPressed: () => Navigator.of(sheet).pop(true),
+            child: Text(action),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(onPressed: () => Navigator.of(sheet).pop(false), child: Text(s.t('Cancel', 'إلغاء'))),
+        ]),
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _leave(BuildContext context) async {
+    final s = context.s;
+    final ok = await _confirm(
+      context,
+      title: s.t('Leave ${view.group.name}?', 'تخرج من ${view.group.name}؟'),
+      body: s.t(
+        "You'll come off every poll you're on, and stop getting its messages. The organizer can add you again later.",
+        'هتتشال من أي تصويت إنت فيه، ومش هيوصلك رسايله. المنظم يقدر يضيفك تاني بعدين.',
+      ),
+      action: s.t('Leave the group', 'اخرج من الجروب'),
+    );
+    if (!ok || !context.mounted) return;
+    await runAction(context, () => context.services.api.leaveGroup(view.group.id));
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final s = context.s;
+    final services = context.services;
+    final ok = await _confirm(
+      context,
+      title: s.t('Delete your account?', 'تمسح حسابك؟'),
+      body: s.t(
+        'You leave every group, and your name and number are erased. Past games keep only "Former member", so '
+            "the season table still adds up. This can't be undone.",
+        'هتخرج من كل الجروبات، واسمك ورقمك هيتمسحوا. الماتشات اللي فاتت هيفضل فيها "عضو سابق" بس، عشان جدول الموسم '
+            'يفضل مظبوط. مفيش رجوع في الخطوة دي.',
+      ),
+      action: s.t('Delete everything', 'امسح كل حاجة'),
+    );
+    if (!ok || !context.mounted) return;
+    final done = await runAction(context, () => services.api.deleteAccount().then((_) => true));
+    if (done != true) return;
+    await services.push.unregister(view.uid);
+    await services.auth.signOut();
   }
 
   Future<void> _addMember(BuildContext context) async {
@@ -230,6 +309,18 @@ class GroupTab extends StatelessWidget {
             onTap: () {
               Navigator.of(sheet).pop();
               runAction(context, () => api.updateMember(view.group.id, m.id, isGoalkeeper: !m.isGoalkeeper));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.star_outline),
+            title: Text(m.isRegular ? s.t('Not a regular', 'مش أساسي') : s.t('Mark as a regular', 'خليه أساسي')),
+            subtitle: Text(view.group.rules.regularsHeadStartMinutes > 0
+                ? s.t('Regulars can vote ${s.n(view.group.rules.regularsHeadStartMinutes)} minutes early',
+                    'الأساسيين يصوتوا قبل الكل بـ${s.n(view.group.rules.regularsHeadStartMinutes)} دقيقة')
+                : s.t('Turn on the head start in Game settings > Priority', 'شغّل الأولوية من إعدادات الماتش')),
+            onTap: () {
+              Navigator.of(sheet).pop();
+              runAction(context, () => api.updateMember(view.group.id, m.id, isRegular: !m.isRegular));
             },
           ),
           if (!isSelf)

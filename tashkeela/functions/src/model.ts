@@ -7,10 +7,14 @@
 // groups/{groupId}/games/{gameId}/entries/{memberId}   EntryDoc
 // groups/{groupId}/games/{gameId}/log/{id} LogDoc    (every vote, for disputes)
 // groups/{groupId}/private/levels          LevelsDoc (organizers only)
+// groups/{groupId}/stats/{seasonId}        StatsDoc  (the season table)
+// groups/{groupId}/ballots/{gameId}_{memberId}  BallotDoc (secret MVP votes; no client can read them)
 // users/{uid}                              UserDoc
 
 import { Timestamp } from "firebase-admin/firestore";
 import { DEFAULT_KITS, Kit } from "./domain/kits";
+import { Payments } from "./domain/payments";
+import { PlayerStats } from "./domain/stats";
 import { Entry, EntryState, OutReason, QuietHours, RosterRules, Source } from "./domain/roster";
 import { WeeklySchedule } from "./domain/schedule";
 import { Team } from "./domain/teams";
@@ -24,6 +28,23 @@ export interface GroupRules {
   matchDayConfirmWindowMinutes: number;
   lateDropOutHours: number;
   quietHours: QuietHours | null;
+  /** Regulars may vote this many minutes before everyone else; 0 is off. */
+  regularsHeadStartMinutes: number;
+  /** A late drop-out starts the next poll behind everyone who votes normally. */
+  lateDropOutsStartAsReserves: boolean;
+}
+
+/** Where players send their share of the pitch fee. */
+export interface PayTo {
+  instapay: string | null;
+  wallet: string | null;
+  note: string | null;
+}
+
+export interface Season {
+  id: string;
+  name: string;
+  startedAt: Timestamp;
 }
 
 export interface GroupReminders {
@@ -48,6 +69,8 @@ export interface GroupDoc {
   rules: GroupRules;
   reminders: GroupReminders;
   pitchFee: number | null;
+  payTo: PayTo | null;
+  season: Season | null;
   adminUids: string[];
   memberUids: string[];
   currentGameId: string | null;
@@ -66,6 +89,10 @@ export interface MemberDoc {
   uid: string | null;
   role: Role;
   isGoalkeeper: boolean;
+  /** Gets the regulars' head start, when the group uses it. */
+  isRegular?: boolean;
+  /** Dropped out late from this game, so starts the next poll as a reserve (when the group uses that rule). */
+  reserveNext?: { gameId: string; since: Timestamp } | null;
   whatsappOptIn: boolean;
   language: Language;
   active: boolean;
@@ -108,6 +135,14 @@ export interface GameDoc {
   matchDayReminderSent: boolean;
   result: GameResult | null;
   teams: TeamsDoc | null;
+  /** The pitch fee split among the players, from kick-off on. */
+  payments?: (Payments & { updatedAt: Timestamp }) | null;
+  /** Man of the match. Votes are secret; who has voted and the result are not. */
+  mvp?: MvpDoc | null;
+  /** While MVP voting is open; cleared when it closes. */
+  mvpClosesAt?: Timestamp | null;
+  /** The regulars' head start was announced. */
+  earlyNotified?: boolean;
   /** Who made a custom poll; null for weekly ones. */
   createdBy: string | null;
   createdAt: Timestamp;
@@ -119,6 +154,31 @@ export interface GameDoc {
  * see it. 1 top, 2 about 70%, 3 about 50% or below, 4 weak, 0 new / not sure.
  */
 export type Level = 0 | 1 | 2 | 3 | 4;
+
+export interface MvpDoc {
+  /** Member ids who have voted. */
+  voters: string[];
+  /** Set when voting closes. */
+  winners: string[] | null;
+  winnerVotes: number | null;
+}
+
+export interface BallotDoc {
+  gameId: string;
+  voter: string;
+  choice: string;
+  at: Timestamp;
+}
+
+export interface StatsDoc {
+  seasonId: string;
+  name: string;
+  startedAt: Timestamp;
+  /** Games played this season. */
+  games: number;
+  players: Record<string, PlayerStats>;
+  updatedAt: Timestamp;
+}
 
 export interface LevelsDoc {
   levels: Record<string, Level>;
@@ -162,6 +222,8 @@ export const DEFAULT_RULES: GroupRules = {
   matchDayConfirmWindowMinutes: 30,
   lateDropOutHours: 24,
   quietHours: { start: "00:00", end: "08:00" },
+  regularsHeadStartMinutes: 0,
+  lateDropOutsStartAsReserves: false,
 };
 
 export const DEFAULT_REMINDERS: GroupReminders = {

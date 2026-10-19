@@ -4,13 +4,16 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import { initializeApp } from "firebase-admin/app";
 import { Firestore, getFirestore } from "firebase-admin/firestore";
 import { AppError } from "../src/core/errors";
+import * as account from "../src/core/account";
 import * as groups from "../src/core/groups";
+import * as payments from "../src/core/payments";
 import * as polls from "../src/core/polls";
+import * as season from "../src/core/season";
 import * as squad from "../src/core/squad";
 import { applyRosterAction } from "../src/core/roster-ops";
 import { tickGroup } from "../src/core/tick";
 import { RosterError } from "../src/domain/roster";
-import { EntryDoc, GameDoc, GroupDoc, MemberDoc } from "../src/model";
+import { EntryDoc, GameDoc, GroupDoc, MemberDoc, StatsDoc } from "../src/model";
 import { dispatch, Senders } from "../src/notify/dispatch";
 import { handleInbound } from "../src/notify/inbound";
 import { buttonPayload } from "../src/notify/messages";
@@ -317,6 +320,167 @@ describe("levels and teams", () => {
     const group = (await db.doc(`groups/${groupId}`).get()).data() as GroupDoc;
     assert.deepEqual(group.rules.kits.map((k) => k.name), ["White", "Sky"]);
     await assert.rejects(groups.updateSettings(db, patch([{ color: "white" }, { color: "other", name: "Sky" }])), (e: AppError) => e.code === "invalid");
+  });
+});
+
+describe("after the game", () => {
+  const KICKOFF = at("2026-10-22T18:00:00Z");
+  const code = (c: string) => (e: AppError) => e.code === c;
+
+  /** A game everyone joined, now kicked off. */
+  async function kickedOff(players: number, patch: groups.SettingsPatch = {}) {
+    const { groupId, ids } = await setupGroup(players);
+    await groups.updateSettings(db, { groupId, uid: "org", patch, now: SUNDAY_11AM });
+    await tickGroup(db, groupId, at("2026-10-18T09:00:00Z"));
+    for (const [i, id] of ids.entries()) await act(groupId, id, "join", at("2026-10-18T09:00:00Z") + i * 1000);
+    await tickGroup(db, groupId, KICKOFF);
+    return { groupId, ids };
+  }
+
+  it("splits the pitch fee at kick-off; players say they paid, the organizer confirms and reminds the rest", async () => {
+    const { groupId, ids } = await kickedOff(3, { pitchFee: 900, payTo: { instapay: "ahmed@instapay", wallet: "01001234567" } });
+    let game = await gameDoc(groupId);
+    assert.equal(game.status, "closed");
+    assert.equal(game.payments?.perPlayer, 300);
+    assert.deepEqual(Object.keys(game.payments!.players).sort(), [...ids].sort());
+
+    await groups.claimMemberships(db, { uid: "u1", phone: phoneOf(1) });
+    await payments.claimPayment(db, { groupId, uid: "u1", gameId: GAME, now: KICKOFF + 1000 });
+    await payments.setPayment(db, { groupId, uid: "org", gameId: GAME, memberId: ids[1], state: "paid", now: KICKOFF + 2000 });
+    game = await gameDoc(groupId);
+    assert.deepEqual(ids.map((id) => game.payments!.players[id]), ["claimed", "paid", "unpaid"]);
+    await assert.rejects(
+      payments.setPayment(db, { groupId, uid: "u1", gameId: GAME, memberId: ids[0], state: "paid", now: KICKOFF }),
+      code("permission_denied"),
+    );
+
+    const r = await payments.remindUnpaid(db, { groupId, uid: "org", gameId: GAME });
+    assert.deepEqual(r.notices, [{ kind: "payment_due", groupId, gameId: GAME, memberIds: [ids[2]] }]);
+    const whatsapp = new FakeWhatsApp();
+    await dispatch(db, r.notices, { push: new FakePush(), whatsapp });
+    assert.equal(whatsapp.templates.length, 1);
+    assert.equal(whatsapp.templates[0].template, "tashkeela_payment_due");
+    assert.match(whatsapp.templates[0].params[2], /ahmed@instapay/);
+
+    await payments.setGameFee(db, { groupId, uid: "org", gameId: GAME, fee: 1200, now: KICKOFF + 3000 });
+    game = await gameDoc(groupId);
+    assert.equal(game.payments?.perPlayer, 400);
+    assert.equal(game.payments?.players[ids[1]], "paid");
+  });
+
+  it("lets the players vote for the man of the match, then fills the season table", async () => {
+    const { groupId, ids } = await kickedOff(4);
+    const teams = [
+      { kit: { color: "red" }, memberIds: [ids[0], ids[1]] },
+      { kit: { color: "black" }, memberIds: [ids[2], ids[3]] },
+    ];
+    await squad.saveTeams(db, { groupId, uid: "org", gameId: GAME, teams, now: KICKOFF + 1000 });
+    await groups.recordResult(db, { groupId, uid: "org", gameId: GAME, winner: "Red", photoPath: null, now: KICKOFF + 2000 });
+
+    for (let i = 1; i <= 4; i++) await groups.claimMemberships(db, { uid: `u${i}`, phone: phoneOf(i) });
+    const vote = (uid: string, choice: string) => season.voteMvp(db, { groupId, uid, gameId: GAME, choice, now: KICKOFF + 3000 });
+    await vote("u1", ids[1]);
+    await vote("u2", ids[0]);
+    await vote("u3", ids[1]);
+    await vote("u4", ids[1]);
+    await assert.rejects(vote("u1", ids[0]), code("invalid"));
+    let game = await gameDoc(groupId);
+    assert.equal(game.mvp?.voters.length, 4);
+    assert.equal(game.mvp?.winners, null, "secret until voting closes");
+
+    await tickGroup(db, groupId, KICKOFF + 24 * 3600_000);
+    game = await gameDoc(groupId);
+    assert.deepEqual(game.mvp?.winners, [ids[1]]);
+    assert.equal(game.mvp?.winnerVotes, 3);
+    await assert.rejects(season.voteMvp(db, { groupId, uid: "u1", gameId: GAME, choice: ids[2], now: KICKOFF + 25 * 3600_000 }), code("invalid"));
+
+    const stats = (await db.doc(`groups/${groupId}/stats/s1`).get()).data() as StatsDoc;
+    assert.equal(stats.games, 1);
+    assert.deepEqual(stats.players[ids[1]], { name: "Player 2", played: 1, wins: 1, mvp: 1, dropOuts: 0, lateDropOuts: 0 });
+    assert.equal(stats.players[ids[2]].wins, 0);
+
+    const { seasonId } = await season.startSeason(db, { groupId, uid: "org", name: "Spring 2027", now: KICKOFF + 2 * 86400_000 });
+    assert.equal(((await db.doc(`groups/${groupId}/stats/${seasonId}`).get()).data() as StatsDoc).games, 0);
+  });
+});
+
+describe("priority rules", () => {
+  const code = (c: string) => (e: AppError) => e.code === c;
+
+  it("lets regulars vote before everyone else", async () => {
+    const { groupId, ids } = await setupGroup(2);
+    await groups.updateSettings(db, { groupId, uid: "org", patch: { rules: { regularsHeadStartMinutes: 30 } }, now: SUNDAY_11AM });
+    await groups.updateMember(db, { groupId, uid: "org", memberId: ids[0], isRegular: true });
+    const early = at("2026-10-18T08:40:00Z"); // the poll opens for everyone at 09:00Z (noon in Cairo)
+    assert.deepEqual(await tickGroup(db, groupId, early), [{ kind: "poll_open", groupId, gameId: GAME, audience: "regulars" }]);
+    await act(groupId, ids[0], "join", early);
+    await assert.rejects(act(groupId, ids[1], "join", early), code("poll_not_open"));
+    assert.deepEqual(await tickGroup(db, groupId, at("2026-10-18T09:00:00Z")), [
+      { kind: "poll_open", groupId, gameId: GAME, audience: "others" },
+    ]);
+    await act(groupId, ids[1], "join", at("2026-10-18T09:00:01Z"));
+    assert.equal((await entryDoc(groupId, ids[0]))?.seq, 1);
+  });
+
+  it("starts a late drop-out as a reserve in the next poll", async () => {
+    const { groupId, ids } = await setupGroup(3);
+    await groups.updateSettings(db, {
+      groupId,
+      uid: "org",
+      patch: { rules: { squadSize: 2, lateDropOutsStartAsReserves: true } },
+      now: SUNDAY_11AM,
+    });
+    await tickGroup(db, groupId, at("2026-10-18T09:00:00Z"));
+    await act(groupId, ids[0], "join", at("2026-10-18T09:00:00Z"));
+    await act(groupId, ids[1], "join", at("2026-10-18T09:00:01Z"));
+    await act(groupId, ids[0], "drop", at("2026-10-22T10:00:00Z")); // within 24 hours: late
+    const memberOf = async (id: string) => (await db.doc(`groups/${groupId}/members/${id}`).get()).data() as MemberDoc;
+    assert.equal((await memberOf(ids[0])).reserveNext?.gameId, GAME);
+
+    await tickGroup(db, groupId, at("2026-10-22T18:00:00Z"));
+    await tickGroup(db, groupId, at("2026-10-22T19:31:00Z"));
+    const NEXT = "2026-10-29";
+    await tickGroup(db, groupId, at("2026-10-25T09:00:00Z"));
+    const join = (i: number, t: string) =>
+      applyRosterAction(db, { groupId, gameId: NEXT, memberId: ids[i], action: "join", source: "app", actorUid: null, now: at(t) });
+    await join(0, "2026-10-25T09:00:00Z"); // first to vote, but starts behind
+    await join(1, "2026-10-25T09:00:05Z");
+    await join(2, "2026-10-25T09:00:10Z");
+    const state = async (id: string) =>
+      ((await db.doc(`groups/${groupId}/games/${NEXT}/entries/${id}`).get()).data() as EntryDoc).state;
+    assert.deepEqual([await state(ids[1]), await state(ids[2]), await state(ids[0])], ["confirmed", "confirmed", "waiting"]);
+
+    // One poll only: lifted at that game's kick-off.
+    await tickGroup(db, groupId, at("2026-10-29T19:00:00Z"));
+    assert.equal((await memberOf(ids[0])).reserveNext ?? null, null);
+  });
+});
+
+describe("leaving", () => {
+  it("lets members leave, and erases a deleted account's name and number", async () => {
+    const { groupId, ids } = await setupGroup(2);
+    await tickGroup(db, groupId, at("2026-10-18T09:00:00Z"));
+    await groups.claimMemberships(db, { uid: "u1", phone: phoneOf(1) });
+    await groups.claimMemberships(db, { uid: "u2", phone: phoneOf(2) });
+    await act(groupId, ids[0], "join", at("2026-10-18T09:00:00Z"));
+    await act(groupId, ids[1], "join", at("2026-10-18T09:00:01Z"));
+
+    await account.leaveGroup(db, { groupId, uid: "u2", now: at("2026-10-19T09:00:00Z") });
+    assert.equal(((await db.doc(`groups/${groupId}/members/${ids[1]}`).get()).data() as MemberDoc).active, false);
+    assert.equal((await entryDoc(groupId, ids[1]))?.state, "out");
+
+    await tickGroup(db, groupId, at("2026-10-22T19:01:00Z")); // kick-off: the season table lists player 1
+    await account.deleteAccount(db, { uid: "u1", now: at("2026-10-23T10:00:00Z") });
+    const gone = (await db.doc(`groups/${groupId}/members/${ids[0]}`).get()).data() as MemberDoc;
+    assert.deepEqual([gone.name, gone.phone, gone.uid, gone.active], [account.FORMER_MEMBER, "", null, false]);
+    assert.equal((await entryDoc(groupId, ids[0]))?.name, account.FORMER_MEMBER);
+    const table = (await db.doc(`groups/${groupId}/stats/s1`).get()).data() as StatsDoc;
+    assert.deepEqual([table.players[ids[0]].name, table.players[ids[0]].played], [account.FORMER_MEMBER, 1]);
+    assert.equal((await db.doc("users/u1").get()).exists, false);
+
+    const lastOrganizer = (e: AppError) => e.code === "last_organizer";
+    await assert.rejects(account.deleteAccount(db, { uid: "org", now: at("2026-10-19T10:00:00Z") }), lastOrganizer);
+    await assert.rejects(account.leaveGroup(db, { groupId, uid: "org", now: at("2026-10-19T10:00:00Z") }), lastOrganizer);
   });
 });
 

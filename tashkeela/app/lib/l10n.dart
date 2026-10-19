@@ -21,6 +21,9 @@ class S {
 
   String n(num value) => NumberFormat.decimalPattern(_locale).format(value);
 
+  /// "120 EGP" / "١٢٠ جنيه"
+  String money(num value) => t('${n(value)} EGP', '${n(value)} جنيه');
+
   /// "Thu 22 Oct, 9:00 PM"
   String when(DateTime d) => DateFormat(isAr ? 'EEE d MMM، h:mm a' : 'EEE d MMM, h:mm a', _locale).format(d.toLocal());
 
@@ -56,6 +59,7 @@ class S {
         'not_member' => t('Your number is not in this group.', 'رقمك مش في الجروب ده.'),
         'permission_denied' => t('Only organizers can do that.', 'المنظم بس اللي يقدر يعمل كده.'),
         'already_exists' => t('That number is already in the group.', 'الرقم ده موجود في الجروب.'),
+        'last_organizer' => t('Make someone else an organizer first.', 'خلي حد تاني منظم الأول.'),
         'unauthenticated' => t('Please sign in again.', 'سجل دخولك تاني.'),
         _ => t('Something went wrong. Try again.', 'حصلت مشكلة، جرب تاني.'),
       };

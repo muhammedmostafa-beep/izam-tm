@@ -32,7 +32,13 @@ class SquadTab extends StatelessWidget {
         ),
         title: Text(e.name,
             style: TextStyle(fontWeight: isMe ? FontWeight.w700 : FontWeight.w500, color: isMe ? Palette.lime : null)),
-        subtitle: e.source == 'whatsapp' ? Text(s.t('via WhatsApp', 'من واتساب'), style: const TextStyle(fontSize: 12)) : null,
+        subtitle: switch ([
+          if (e.source == 'whatsapp') s.t('via WhatsApp', 'من واتساب'),
+          if (e.startedAsReserve) s.t('Late drop-out last time: starts behind', 'اعتذر متأخر المرة اللي فاتت: بيبدأ ورا'),
+        ]) {
+          [] => null,
+          final parts => Text(parts.join(s.sep), style: const TextStyle(fontSize: 12)),
+        },
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           if (view.isAdmin) ...[
             Pill(levelBadge(s, view.levelOf(e.memberId)), color: levelColor(view.levelOf(e.memberId))),

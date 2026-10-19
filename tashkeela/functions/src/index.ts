@@ -7,7 +7,10 @@ import { defineSecret, defineString } from "firebase-functions/params";
 import { CallableRequest, HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { asAppError, AppErrorCode, invalid } from "./core/errors";
+import * as account from "./core/account";
 import * as groups from "./core/groups";
+import * as payments from "./core/payments";
+import * as season from "./core/season";
 import * as polls from "./core/polls";
 import * as squad from "./core/squad";
 import { applyRosterAction, RosterAction } from "./core/roster-ops";
@@ -133,6 +136,7 @@ export const updateMember = callable((req, a) =>
     name: req.data?.name,
     role: req.data?.role,
     isGoalkeeper: req.data?.isGoalkeeper,
+    isRegular: req.data?.isRegular,
   }),
 );
 
@@ -193,16 +197,18 @@ export const openPollNow = callable(async (req, a) => {
   return r;
 });
 
-export const recordResult = callable((req, a) =>
-  groups.recordResult(db, {
-    groupId: str(req.data?.groupId, "groupId"),
+export const recordResult = callable(async (req, a) => {
+  const groupId = str(req.data?.groupId, "groupId");
+  await groups.recordResult(db, {
+    groupId,
     uid: a.uid,
     gameId: str(req.data?.gameId, "gameId"),
     winner: req.data?.winner,
     photoPath: req.data?.photoPath,
     now: Date.now(),
-  }),
-);
+  });
+  await season.rebuildSeasonStats(db, groupId, Date.now());
+});
 
 // --- Polls the organizer makes ------------------------------------------------
 
@@ -256,15 +262,62 @@ export const setMemberLevel = callable((req, a) =>
   }),
 );
 
-export const saveTeams = callable((req, a) =>
-  squad.saveTeams(db, {
-    groupId: str(req.data?.groupId, "groupId"),
+export const saveTeams = callable(async (req, a) => {
+  const groupId = str(req.data?.groupId, "groupId");
+  await squad.saveTeams(db, {
+    groupId,
     uid: a.uid,
     gameId: str(req.data?.gameId, "gameId"),
     teams: req.data?.teams ?? null,
     now: Date.now(),
-  }),
+  });
+});
+
+// --- Paying the pitch ----------------------------------------------------------
+
+const gameInput = (req: CallableRequest<any>, uid: string) => ({
+  groupId: str(req.data?.groupId, "groupId"),
+  uid,
+  gameId: str(req.data?.gameId, "gameId"),
+  now: Date.now(),
+});
+
+export const setGameFee = callable((req, a) => payments.setGameFee(db, { ...gameInput(req, a.uid), fee: req.data?.fee ?? null }));
+
+export const setPayment = callable((req, a) =>
+  payments.setPayment(db, { ...gameInput(req, a.uid), memberId: str(req.data?.memberId, "memberId"), state: req.data?.state }),
 );
+
+export const claimPayment = callable((req, a) => payments.claimPayment(db, gameInput(req, a.uid)));
+
+export const remindUnpaid = callable(async (req, a) => {
+  const r = await payments.remindUnpaid(db, gameInput(req, a.uid));
+  await dispatch(db, r.notices, senders());
+  return { reminded: r.reminded };
+});
+
+// --- Man of the match and the season table --------------------------------------
+
+export const voteMvp = callable((req, a) => season.voteMvp(db, { ...gameInput(req, a.uid), choice: req.data?.choice }));
+
+export const closeMvpVoting = callable((req, a) => season.closeMvpNow(db, gameInput(req, a.uid)));
+
+export const startSeason = callable((req, a) =>
+  season.startSeason(db, { groupId: str(req.data?.groupId, "groupId"), uid: a.uid, name: req.data?.name, now: Date.now() }),
+);
+
+// --- Leaving, and deleting your data ---------------------------------------------
+
+export const leaveGroup = callable(async (req, a) => {
+  const notices = await account.leaveGroup(db, { groupId: str(req.data?.groupId, "groupId"), uid: a.uid, now: Date.now() });
+  await dispatch(db, notices, senders());
+});
+
+export const deleteAccount = callable(async (_req, a) => {
+  const notices = await account.deleteAccount(db, { uid: a.uid, now: Date.now() });
+  await dispatch(db, notices, senders());
+  await getAuth().deleteUser(a.uid);
+});
 
 // --- Scheduler and WhatsApp webhook -------------------------------------------
 

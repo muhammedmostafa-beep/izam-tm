@@ -49,10 +49,10 @@ The promotion loop (highlighted) is the organizer's biggest weekly chore today; 
 | Reminders | Poll opening, "you're in", "you've been promoted", match day, payment due. | First version |
 | Group posts | Ready-made Arabic or English posts (squad list, changes, result) shared to the group in one tap. | First version |
 | Champions photo | Upload the winners' photo; the app crops it to a group icon with a "Champions, week 12" frame, ready to set as the group picture. | First version |
-| Team generator | Balances 3 teams by rating, position and goalkeepers; bib colours. | Later |
-| Payment tracker | Splits the pitch fee, shows who paid, and sends InstaPay or wallet reminders. | Later |
-| Stats and season table | Attendance, wins, MVP votes, late drop-outs; a season leaderboard. | Later |
-| Priority rules | Optional: regulars get a head start, late drop-outs start next week as reserves. | Later |
+| Team generator | Balances 3 teams by rating, position and goalkeepers; bib colours. | Built |
+| Payment tracker | Splits the pitch fee, shows who paid, and sends InstaPay or wallet reminders. | Built |
+| Stats and season table | Attendance, wins, MVP votes, late drop-outs; a season leaderboard. | Built |
+| Priority rules | Optional: regulars get a head start, late drop-outs start next week as reserves. | Built (off until the organizer turns them on) |
 
 Fairness is the product. Every rule (who gets in, who moves up, how long a reserve has to confirm) is visible to all players and logged.
 
@@ -121,7 +121,7 @@ Run the app beside the WhatsApp poll for two weeks, and switch only when both li
 2. **Set up the group.** The organizer adds the 24 members (name and number). Each gets a WhatsApp opt-in message with the web link.
 3. **Two-week trial.** Post the WhatsApp poll as usual and open the app's poll at the same minute. Compare the two lists after each round.
 4. **Switch.** From the 24 December game the app is the poll. Pin the web link in the group description.
-5. **Pick the next feature.** After a month, ask the group what comes next: teams, payments or stats.
+5. **Turn on the extras.** After a month, ask the group which extras to use: teams, the pitch-fee tracker, the season table, priority rules. All are built; the priority rules stay off until the organizer turns them on.
 
 ## Product roadmap
 

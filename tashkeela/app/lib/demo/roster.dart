@@ -71,14 +71,20 @@ Entry _find(List<Entry> entries, String memberId) {
 bool _inSquad(List<Entry> entries, String memberId, int squadSize) =>
     _bySeq(entries.where(_active)).take(squadSize).any((e) => e.memberId == memberId);
 
+/// Added to the sequence number of a player who starts the poll as a reserve
+/// (a late drop-out last time, when the group has that rule): everyone who
+/// votes normally is ahead of them, whenever they vote.
+const penaltySeq = 1000000;
+
 /// Add a player at the back of the line.
 RosterResult join(List<Entry> entries, {required String memberId, required String name, required int seq,
     required String source, required RosterContext ctx}) {
   if (!ctx.now.isBefore(ctx.kickoffAt)) throw RosterError('game_started');
   final existing = entries.where((e) => e.memberId == memberId).firstOrNull;
   if (existing != null && _active(existing)) throw RosterError('already_in');
-  final activeCount = entries.where(_active).length;
-  final inSquad = activeCount < ctx.rules.squadSize;
+  // Usually the new entry is last in line; a penalized one (see penaltySeq) can land behind it.
+  final ahead = entries.where((e) => _active(e) && e.seq < seq).length;
+  final inSquad = ahead < ctx.rules.squadSize;
   final entry = Entry(
     memberId: memberId,
     name: name,
@@ -88,7 +94,7 @@ RosterResult join(List<Entry> entries, {required String memberId, required Strin
     source: source,
   );
   final next = [...entries.where((e) => e.memberId != memberId), entry];
-  return _settle(next, [RosterEvent('joined', memberId, position: activeCount + 1, inSquad: inSquad)], ctx);
+  return _settle(next, [RosterEvent('joined', memberId, position: ahead + 1, inSquad: inSquad)], ctx);
 }
 
 /// A player in the squad or the queue can't make it.

@@ -5,6 +5,7 @@
 // the phone, and everything starts over when the app is closed.
 
 import 'dart:async';
+import 'dart:math' show max;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -77,6 +78,14 @@ const _passer = 'm18';
 const _dropper = 'm17';
 const _dropAfterOpen = Duration(seconds: 30);
 
+/// Marked as regulars: they get the head start when the organizer turns it on.
+const _regulars = {_meId, 'm01', 'm02', 'm03', 'm06', 'm09', 'm12'};
+
+/// Man of the match voting stays open this long after kick-off.
+const _mvpWindow = Duration(hours: 24);
+
+const _formerMember = 'Former member';
+
 const _defaultRules = Rules(
   squadSize: 18,
   kits: Kit.base,
@@ -86,6 +95,18 @@ const _defaultRules = Rules(
   quietHours: QuietHours('00:00', '08:00'),
 );
 const _defaultReminders = Reminders(pollOpening: true, promotion: true, matchDay: true, matchDayHoursBefore: 4);
+
+/// One game of the season, as the table counts it.
+class _Record {
+  const _Record(this.at,
+      {required this.squad, this.winners = const [], this.mvp = const [], this.dropOuts = const [], this.lateDropOuts = const []});
+  final DateTime at;
+  final List<String> squad;
+  final List<String> winners;
+  final List<String> mvp;
+  final List<String> dropOuts;
+  final List<String> lateDropOuts;
+}
 
 class _GroupState {
   _GroupState({
@@ -103,6 +124,11 @@ class _GroupState {
   Rules rules = _defaultRules;
   Reminders reminders = _defaultReminders;
   num? pitchFee;
+  PayTo payTo = const PayTo();
+  Season season = const Season(id: 's1', name: 'Season 1');
+
+  /// Games of the season played before the demo starts.
+  final history = <_Record>[];
   final adminUids = <String>[];
   final members = <String, Member>{};
   final games = <String, _GameState>{};
@@ -136,6 +162,8 @@ class _GroupState {
         currentGameId: currentGameId,
         lastChampions: lastChampions,
         pitchFee: pitchFee,
+        payTo: payTo,
+        season: season,
       );
 }
 
@@ -166,6 +194,15 @@ class _GameState {
   List<Team>? teams;
   String? winner;
   String? photoPath;
+  GamePayments? payments;
+  bool earlyNotified = false;
+
+  /// Man of the match: null until kick-off. Ballots stay here; only who voted is shown.
+  List<String>? mvpVoters;
+  final ballots = <String, String>{};
+  List<String>? mvpWinners;
+  int? mvpWinnerVotes;
+  DateTime? mvpClosesAt;
 
   bool get isAhead => status == GameStatus.scheduled || status == GameStatus.open;
 
@@ -188,8 +225,14 @@ class _GameState {
       venue: venue,
       durationMinutes: durationMinutes,
       teams: teams,
+      payments: payments,
+      mvp: mvpVoters == null
+          ? null
+          : Mvp(voters: List.of(mvpVoters!), winners: mvpWinners, winnerVotes: mvpWinnerVotes, closesAt: mvpClosesAt),
     );
   }
+
+  List<String> get squad => RosterLine.from(entries, squadSize).squad.map((e) => e.memberId).toList();
 }
 
 /// The group's rules with one poll's squad size.
@@ -202,18 +245,73 @@ Rules _rulesFor(Rules r, int squadSize) => Rules(
       quietHours: r.quietHours,
     );
 
-Member _member(Member m, {String? name, bool? isAdmin, bool? isGoalkeeper, bool? whatsappOptIn, String? language, bool? active}) =>
+const _keep = Object();
+
+Member _member(Member m,
+        {String? name,
+        String? phone,
+        Object? uid = _keep,
+        bool? isAdmin,
+        bool? isGoalkeeper,
+        bool? isRegular,
+        bool? whatsappOptIn,
+        String? language,
+        bool? active,
+        Object? reserveAfter = _keep}) =>
     Member(
       id: m.id,
       name: name ?? m.name,
-      phone: m.phone,
-      uid: m.uid,
+      phone: phone ?? m.phone,
+      uid: identical(uid, _keep) ? m.uid : uid as String?,
       isAdmin: isAdmin ?? m.isAdmin,
       isGoalkeeper: isGoalkeeper ?? m.isGoalkeeper,
+      isRegular: isRegular ?? m.isRegular,
       whatsappOptIn: whatsappOptIn ?? m.whatsappOptIn,
       language: language ?? m.language,
       active: active ?? m.active,
+      reserveAfterGameId: identical(reserveAfter, _keep) ? m.reserveAfterGameId : reserveAfter as String?,
     );
+
+/// The fee split over the players; anyone already on the list keeps their state (like splitFee on the server).
+GamePayments _split(num fee, List<String> squad, GamePayments? before) => GamePayments(
+      fee: fee,
+      perPlayer: squad.isEmpty ? 0 : (fee / squad.length).ceil(),
+      players: {for (final id in squad) id: before?.players[id] ?? PaymentState.unpaid},
+    );
+
+void _setPayment(_GameState game, String memberId, PaymentState state) {
+  final p = game.payments!;
+  game.payments = GamePayments(fee: p.fee, perPlayer: p.perPlayer, players: {...p.players, memberId: state});
+}
+
+/// Weeks 1 to 11 of the season, before the demo week, so the table has something in it.
+List<_Record> _seasonSoFar(DateTime week12, Map<String, int> levels) {
+  final everyone = [_meId, for (final b in _bots) b.id];
+  int mix(String id, int w) => id.codeUnits.fold(w * 31, (h, c) => (h * 17 + c) % 1009);
+  return [
+    for (var w = 1; w <= 11; w++)
+      () {
+        // Fady hardly ever comes; three others sit out each week, in turn.
+        final missing = {'m21', everyone[(w * 3) % 21], everyone[(w * 3 + 7) % 21], everyone[(w * 3 + 14) % 21]};
+        final squad = everyone.where((id) => !missing.contains(id)).take(18).toList()
+          ..sort((a, b) => mix(a, w).compareTo(mix(b, w)));
+        final winners = squad.sublist((w % 3) * 6, (w % 3) * 6 + 6);
+        int rank(String id) => switch (levels[id] ?? 0) { 0 => 3, final l => l };
+        final best = [...winners]..sort((a, b) => rank(a).compareTo(rank(b)));
+        // One of the players who sat out had said yes, then dropped out.
+        final dropper = missing.firstWhere((id) => id != 'm21' && id != _meId);
+        return _Record(
+          week12.subtract(Duration(days: 7 * (12 - w))),
+          squad: squad,
+          winners: winners,
+          mvp: [best[w % 2]],
+          dropOuts: [dropper],
+          lateDropOuts: [if (w % 3 == 0) dropper],
+        );
+      }(),
+  ];
+}
+
 
 String _clock(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
@@ -278,6 +376,16 @@ class DemoBackend {
         pollOpenTime: _clock(opens),
       ),
     );
+    g.rules = const Rules(
+      squadSize: 18,
+      kits: Kit.base,
+      confirmWindowMinutes: 120,
+      matchDayConfirmWindowMinutes: 30,
+      lateDropOutHours: 24,
+      quietHours: QuietHours('00:00', '08:00'),
+      lateDropOutsStartAsReserves: true,
+    );
+    g.payTo = const PayTo(instapay: 'ahmed.s@instapay', wallet: '010 0000 0001');
     g.adminUids.add(demoUid);
     g.levels[_meId] = 2;
     g.members[_meId] = Member(
@@ -287,6 +395,7 @@ class DemoBackend {
       uid: demoUid,
       isAdmin: true,
       isGoalkeeper: false,
+      isRegular: true,
       whatsappOptIn: true,
       language: _language,
       active: true,
@@ -300,11 +409,15 @@ class DemoBackend {
         uid: null,
         isAdmin: false,
         isGoalkeeper: b.goalkeeper,
+        isRegular: _regulars.contains(b.id),
         whatsappOptIn: true,
         language: b.language,
         active: true,
       );
     }
+    final history = _seasonSoFar(kickoff, g.levels);
+    g.history.addAll(history);
+    g.season = Season(id: 's1', name: 'Season 1', startedAt: history.first.at.subtract(const Duration(days: 1)));
     final game = _GameState(
       id: 'week-12',
       weekNumber: 12,
@@ -324,8 +437,33 @@ class DemoBackend {
 
   /// Timers for the poll opening and kick-off.
   void _schedule(_GroupState g, _GameState game) {
-    if (game.status == GameStatus.scheduled) _at(game.pollOpensAt, () => _openPoll(g, game));
+    if (game.status == GameStatus.scheduled) {
+      _at(game.pollOpensAt, () => _openPoll(g, game));
+      final head = g.rules.regularsHeadStartMinutes;
+      if (head > 0) _at(game.pollOpensAt.subtract(Duration(minutes: head)), () => _openEarly(g, game));
+    }
     _at(game.kickoffAt, () => _close(g, game));
+  }
+
+  /// The regulars' head start: they hear first, and may vote from now on.
+  void _openEarly(_GroupState g, _GameState game) {
+    final head = g.rules.regularsHeadStartMinutes;
+    final t = now();
+    if (game.status != GameStatus.scheduled || game.earlyNotified || head == 0) return;
+    if (t.isBefore(game.pollOpensAt.subtract(Duration(minutes: head, seconds: 1))) || !t.isBefore(game.pollOpensAt)) return;
+    game.earlyNotified = true;
+    if (_myMember(g)?.isRegular ?? false) {
+      _notify(g, (s) => (
+            s.t("Regulars' head start: ${g.name}", 'أولوية الأساسيين: ${g.name}'),
+            s.t('You can vote now, ${s.n(head)} minutes before everyone else.', 'تقدر تصوت دلوقتي، قبل الكل بـ${s.n(head)} دقيقة.'),
+          ));
+    }
+    _changed();
+    if (g.id != demoGroupId) return;
+    final regulars = _bots.where((b) => g.members[b.id]?.isRegular ?? false).toList();
+    for (final (i, b) in regulars.indexed) {
+      _after(Duration(milliseconds: 1200 + i * 700), () => _botJoin(g, game, b));
+    }
   }
 
   void _openPoll(_GroupState g, _GameState game, {bool early = false}) {
@@ -368,8 +506,143 @@ class DemoBackend {
     if (now().isBefore(game.kickoffAt.subtract(const Duration(seconds: 1)))) return;
     if (game.status == GameStatus.open) _applyRoster(g, game, 'expire', null, 'app');
     game.status = GameStatus.closed;
+    _onKickoff(g, game);
     g.refreshCurrent();
     _changed();
+  }
+
+  /// Like onKickoff on the server: split the pitch fee, open man-of-the-match
+  /// voting, and lift last week's late-drop-out penalties.
+  void _onKickoff(_GroupState g, _GameState game) {
+    final squad = game.squad;
+    final fee = g.pitchFee;
+    if (fee != null && fee > 0 && game.payments == null && squad.isNotEmpty) game.payments = _split(fee, squad, null);
+    if (game.mvpVoters == null) {
+      game.mvpVoters = [];
+      game.mvpClosesAt = game.kickoffAt.add(_mvpWindow);
+      _at(game.mvpClosesAt!, () => _closeMvp(g, game));
+    }
+    for (final m in [...g.members.values]) {
+      final after = m.reserveAfterGameId;
+      if (after == null || after == game.id) continue;
+      if (g.games[after]?.kickoffAt.isBefore(game.kickoffAt) ?? true) g.members[m.id] = _member(m, reserveAfter: null);
+    }
+    if (g.id == demoGroupId) _afterTheGame(g, game);
+  }
+
+  /// The players vote for man of the match (most for the best-rated) and about half pay within seconds.
+  void _afterTheGame(_GroupState g, _GameState game) {
+    final bots = game.squad.where((id) => id != _meId).toList();
+    if (bots.length < 3) return;
+    int rank(String id) => switch (g.levels[id] ?? 0) { 0 => 3, final l => l };
+    final favourites = [...bots]..sort((a, b) => rank(a) != rank(b) ? rank(a).compareTo(rank(b)) : a.compareTo(b));
+    for (final (i, id) in bots.indexed) {
+      final pick = i % 3 == 0 ? favourites[1] : favourites[0];
+      final choice = pick != id ? pick : (pick == favourites[0] ? favourites[1] : favourites[0]);
+      _after(Duration(milliseconds: 1500 + i * 600), () => _botVote(g, game, id, choice));
+    }
+    for (final (i, id) in bots.where((id) => id.codeUnitAt(id.length - 1).isEven).indexed) {
+      _after(Duration(milliseconds: 2000 + i * 900), () => _botClaim(game, id));
+    }
+  }
+
+  void _botVote(_GroupState g, _GameState game, String voter, String choice) {
+    final voters = game.mvpVoters;
+    if (voters == null || game.mvpWinners != null) return;
+    game.ballots[voter] = choice;
+    if (!voters.contains(voter)) voters.add(voter);
+    _changed();
+  }
+
+  void _botClaim(_GameState game, String memberId) {
+    if (game.payments?.players[memberId] != PaymentState.unpaid) return;
+    _setPayment(game, memberId, PaymentState.claimed);
+    _changed();
+  }
+
+  /// Count the votes, like closeMvp on the server.
+  void _closeMvp(_GroupState g, _GameState game) {
+    if (game.mvpVoters == null || game.mvpWinners != null) return;
+    final counts = <String, int>{};
+    for (final c in game.ballots.values) {
+      counts[c] = (counts[c] ?? 0) + 1;
+    }
+    final top = counts.values.fold(0, max);
+    game
+      ..mvpWinners = ([for (final MapEntry(:key, :value) in counts.entries) if (top > 0 && value == top) key]..sort())
+      ..mvpWinnerVotes = top
+      ..mvpClosesAt = null;
+    _changed();
+  }
+
+  /// The season table, rebuilt from the season's games like rebuildSeasonStats on the server.
+  SeasonTable _table(_GroupState g) {
+    final from = g.season.startedAt;
+    bool inSeason(DateTime at) => from == null || !at.isBefore(from);
+    final records = [
+      ...g.history.where((r) => inSeason(r.at)),
+      for (final game in g.games.values)
+        if ((game.status == GameStatus.closed || game.status == GameStatus.played) && inSeason(game.kickoffAt))
+          _Record(
+            game.kickoffAt,
+            squad: game.squad,
+            winners: game.teams?.where((t) => t.kit.name == game.winner).firstOrNull?.memberIds ?? const [],
+            mvp: game.mvpWinners ?? const [],
+            dropOuts: [for (final e in game.entries) if (e.state == EntryState.out && e.outReason == 'dropped') e.memberId],
+            lateDropOuts: [for (final e in game.entries) if (e.state == EntryState.out && e.lateDropOut) e.memberId],
+          ),
+    ];
+    final rows = <String, List<int>>{};
+    List<int> row(String id) => rows.putIfAbsent(id, () => [0, 0, 0, 0, 0]);
+    for (final r in records) {
+      for (final id in r.squad) {
+        row(id)[0]++;
+      }
+      for (final id in r.winners.where(r.squad.contains)) {
+        row(id)[1]++;
+      }
+      for (final id in r.mvp) {
+        row(id)[2]++;
+      }
+      for (final id in r.dropOuts) {
+        row(id)[3]++;
+      }
+      for (final id in r.lateDropOuts) {
+        row(id)[4]++;
+      }
+    }
+    return SeasonTable(
+      seasonId: g.season.id,
+      name: g.season.name,
+      games: records.length,
+      players: [
+        for (final MapEntry(key: id, value: n) in rows.entries)
+          PlayerStats(
+            memberId: id,
+            name: g.members[id]?.name ?? '?',
+            played: n[0],
+            wins: n[1],
+            mvp: n[2],
+            dropOuts: n[3],
+            lateDropOuts: n[4],
+          ),
+      ],
+    );
+  }
+
+  /// Off every poll ahead and out of the group (removed, leaving or deleting the account).
+  void _takeOut(_GroupState g, Member m) {
+    if (m.uid != null && g.adminUids.contains(m.uid) && g.adminUids.length == 1) throw ApiException('last_organizer');
+    for (final game in g.games.values.where((x) => x.isAhead)) {
+      try {
+        _applyRoster(g, game, 'remove', m.id, 'admin');
+      } on ApiException catch (e) {
+        // Not on that poll's list, or it isn't open: nothing to undo.
+        if (!const {'not_in', 'poll_not_open', 'game_closed'}.contains(e.code)) rethrow;
+      }
+    }
+    g.members[m.id] = _member(m, active: false);
+    g.adminUids.remove(m.uid);
   }
 
   void _botJoin(_GroupState g, _GameState game, _Bot b) => _botAct(g, game, b.id, 'join');
@@ -470,6 +743,7 @@ class DemoBackend {
     ];
     if (game.status == GameStatus.open) _applyRoster(g, game, 'expire', null, 'app');
     game.status = GameStatus.closed;
+    _onKickoff(g, game);
     _changed();
   }
 
@@ -542,18 +816,32 @@ class DemoBackend {
   /// One change to the list, like applyRosterAction on the server.
   roster.RosterResult _applyRoster(_GroupState g, _GameState game, String action, String? memberId, String source) {
     final t = now();
+    final member = memberId == null ? null : g.members[memberId];
+    // Regulars may vote during the head start, before the poll opens for everyone.
+    final head = g.rules.regularsHeadStartMinutes;
+    final early = game.status == GameStatus.scheduled &&
+        head > 0 &&
+        (member?.isRegular ?? false) &&
+        !t.isBefore(game.pollOpensAt.subtract(Duration(minutes: head)));
     if (action != 'expire') {
-      if (game.status == GameStatus.scheduled) throw ApiException('poll_not_open');
-      if (game.status != GameStatus.open || !t.isBefore(game.kickoffAt)) throw ApiException('game_closed');
+      if (game.status == GameStatus.scheduled && !early) throw ApiException('poll_not_open');
+      if ((game.status != GameStatus.open && !early) || !t.isBefore(game.kickoffAt)) throw ApiException('game_closed');
     }
     final ctx = roster.RosterContext(now: t, kickoffAt: game.kickoffAt, rules: _rulesFor(g.rules, game.squadSize));
     final roster.RosterResult result;
     try {
       switch (action) {
         case 'join':
-          final m = g.members[memberId];
+          final m = member;
           if (m == null || !m.active) throw ApiException('not_member');
-          result = roster.join(game.entries, memberId: m.id, name: m.name, seq: game.nextSeq, source: source, ctx: ctx);
+          // A late drop-out last time starts this poll behind everyone who votes normally.
+          final after = m.reserveAfterGameId;
+          final penalized = g.rules.lateDropOutsStartAsReserves &&
+              after != null &&
+              after != game.id &&
+              (g.games[after]?.kickoffAt.isBefore(game.kickoffAt) ?? true);
+          final seq = (penalized ? roster.penaltySeq : 0) + game.nextSeq;
+          result = roster.join(game.entries, memberId: m.id, name: m.name, seq: seq, source: source, ctx: ctx);
           game.nextSeq++;
         case 'drop':
           result = roster.dropOut(game.entries, memberId!, ctx);
@@ -572,6 +860,11 @@ class DemoBackend {
     game.entries = result.entries;
     for (final e in result.events) {
       game.log.add(LogItem(type: e.type, memberId: e.memberId, at: t, late: e.late));
+      // Late drop-outs start the next poll as reserves, when the group uses that rule.
+      if (e.type == 'dropped' && e.late && g.rules.lateDropOutsStartAsReserves) {
+        final m = g.members[e.memberId];
+        if (m != null) g.members[m.id] = _member(m, reserveAfter: game.id);
+      }
     }
     _onEvents(g, game, result.events);
     _changed();
@@ -650,7 +943,8 @@ class _DemoVerification implements PhoneVerification {
   @override
   Future<void> confirm(String code) async {
     if (!RegExp(r'^\d{6}$').hasMatch(code)) throw AuthFailure('invalid-verification-code');
-    if (!b._groups.containsKey(demoGroupId)) b._startWeek();
+    // A fresh demo week, also after leaving the group or deleting the account.
+    if (!b._groups.containsKey(demoGroupId) || b._myMember(b._demo) == null) b._startWeek();
     b._uid = demoUid;
     b._authChanges.add(null);
     // After the home screen is up and listening.
@@ -749,6 +1043,12 @@ class _DemoRepo implements Repo {
 
   @override
   Stream<Map<String, int>> levels(String groupId) => b._watch(() => Map.of(b._groups[groupId]?.levels ?? const {}));
+
+  @override
+  Stream<SeasonTable?> stats(String groupId, String seasonId) => b._watch(() {
+        final g = b._groups[groupId];
+        return g == null || g.season.id != seasonId ? null : b._table(g);
+      });
 }
 
 class _DemoApi implements Api {
@@ -784,6 +1084,7 @@ class _DemoApi implements Api {
         pollOpenTime: '12:00',
       ),
     );
+    g.season = Season(id: 's1', name: 'Season 1', startedAt: b.now());
     g.adminUids.add(demoUid);
     g.members['m00'] = Member(
       id: 'm00',
@@ -813,6 +1114,16 @@ class _DemoApi implements Api {
     if (patch['name'] != null) g.name = _text(patch['name']);
     if (patch['venue'] != null) g.venue = _text(patch['venue']);
     if (patch.containsKey('pitchFee')) g.pitchFee = patch['pitchFee'] as num?;
+    if (patch.containsKey('payTo')) {
+      final p = (patch['payTo'] as Map?)?.cast<String, dynamic>() ?? const {};
+      String? field(Object? v) {
+        final s = v is String ? v.trim() : '';
+        if (s.length > 60) throw ApiException('invalid_argument');
+        return s.isEmpty ? null : s;
+      }
+
+      g.payTo = PayTo(instapay: field(p['instapay']), wallet: field(p['wallet']), note: field(p['note']));
+    }
     final sch = patch['schedule'] as Map<String, dynamic>?;
     if (sch != null) {
       final old = g.schedule;
@@ -854,6 +1165,8 @@ class _DemoApi implements Api {
       final squad = r['squadSize'] as int? ?? old.squadSize;
       if (squad < 2 || squad > 60) throw ApiException('invalid_argument');
       final q = r.containsKey('quietHours') ? r['quietHours'] as Map<String, dynamic>? : null;
+      final head = r['regularsHeadStartMinutes'] as int? ?? old.regularsHeadStartMinutes;
+      if (head < 0 || head > 240) throw ApiException('invalid_argument');
       g.rules = Rules(
         squadSize: squad,
         kits: kits,
@@ -863,7 +1176,13 @@ class _DemoApi implements Api {
         quietHours: r.containsKey('quietHours')
             ? (q == null ? null : QuietHours(q['start'] as String, q['end'] as String))
             : old.quietHours,
+        regularsHeadStartMinutes: head,
+        lateDropOutsStartAsReserves: r['lateDropOutsStartAsReserves'] as bool? ?? old.lateDropOutsStartAsReserves,
       );
+      // A new head start can open the regulars' window on a poll that hasn't opened yet.
+      for (final game in g.games.values.where((x) => x.status == GameStatus.scheduled)) {
+        b._schedule(g, game);
+      }
       // A new squad size applies to this week's poll too, and moves its line between squad and reserves.
       for (final game in g.games.values.where((x) => x.kind == 'weekly' && x.isAhead && x.squadSize != squad)) {
         game.squadSize = squad;
@@ -909,7 +1228,8 @@ class _DemoApi implements Api {
   }
 
   @override
-  Future<void> updateMember(String groupId, String memberId, {String? name, String? role, bool? isGoalkeeper}) async {
+  Future<void> updateMember(String groupId, String memberId,
+      {String? name, String? role, bool? isGoalkeeper, bool? isRegular}) async {
     final g = b._group(groupId);
     b._requireAdmin(g);
     final m = g.members[memberId] ?? (throw ApiException('not_found'));
@@ -919,13 +1239,13 @@ class _DemoApi implements Api {
       isAdmin = role == 'admin';
       final uid = m.uid;
       if (uid != null) {
-        if (!isAdmin && g.adminUids.length == 1 && g.adminUids.first == uid) throw ApiException('invalid_argument');
+        if (!isAdmin && g.adminUids.length == 1 && g.adminUids.first == uid) throw ApiException('last_organizer');
         g.adminUids.remove(uid);
         if (isAdmin) g.adminUids.add(uid);
       }
     }
-    g.members[memberId] =
-        _member(m, name: name == null ? null : _text(name, max: 40), isAdmin: isAdmin, isGoalkeeper: isGoalkeeper);
+    g.members[memberId] = _member(m,
+        name: name == null ? null : _text(name, max: 40), isAdmin: isAdmin, isGoalkeeper: isGoalkeeper, isRegular: isRegular);
     b._changed();
   }
 
@@ -934,17 +1254,7 @@ class _DemoApi implements Api {
     final g = b._group(groupId);
     b._requireAdmin(g);
     final m = g.members[memberId] ?? (throw ApiException('not_found'));
-    if (m.uid != null && g.adminUids.contains(m.uid) && g.adminUids.length == 1) throw ApiException('invalid_argument');
-    for (final game in g.games.values.where((x) => x.isAhead)) {
-      try {
-        b._applyRoster(g, game, 'remove', memberId, 'admin');
-      } on ApiException catch (e) {
-        // Not on that poll's list, or it isn't open: nothing to undo.
-        if (!const {'not_in', 'poll_not_open', 'game_closed'}.contains(e.code)) rethrow;
-      }
-    }
-    g.members[memberId] = _member(m, active: false);
-    g.adminUids.remove(m.uid);
+    b._takeOut(g, m);
     b._changed();
   }
 
@@ -1113,6 +1423,151 @@ class _DemoApi implements Api {
       teams = [for (final (i, t) in teams.indexed) Team(kit: kits[i], memberIds: List.of(t.memberIds))];
     }
     game.teams = teams;
+    b._changed();
+  }
+
+  _GameState _afterKickoff(_GroupState g, String gameId) {
+    final game = b._game(g, gameId);
+    if (game.status != GameStatus.closed && game.status != GameStatus.played) throw ApiException('invalid_argument');
+    return game;
+  }
+
+  @override
+  Future<void> setGameFee(String groupId, String gameId, num? fee) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final game = _afterKickoff(g, gameId);
+    if (fee != null && (fee < 0 || fee >= 1000000)) throw ApiException('invalid_argument');
+    game.payments = fee == null || fee == 0 ? null : _split(fee, game.squad, game.payments);
+    b._changed();
+  }
+
+  @override
+  Future<void> setPayment(String groupId, String gameId, String memberId, {required bool paid}) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final game = b._game(g, gameId);
+    if (game.payments?.players[memberId] == null) throw ApiException('not_in');
+    _setPayment(game, memberId, paid ? PaymentState.paid : PaymentState.unpaid);
+    b._changed();
+  }
+
+  @override
+  Future<void> claimPayment(String groupId, String gameId) async {
+    final g = b._group(groupId);
+    final me = b._myMember(g) ?? (throw ApiException('not_member'));
+    final game = b._game(g, gameId);
+    final state = game.payments?.players[me.id] ?? (throw ApiException('not_in'));
+    if (state != PaymentState.unpaid) return;
+    _setPayment(game, me.id, PaymentState.claimed);
+    b._changed();
+    // In the player's view the organizer is simulated too: they check and confirm.
+    if (g.id == demoGroupId && !g.adminUids.contains(demoUid)) {
+      b._after(const Duration(seconds: 4), () {
+        if (game.payments?.players[me.id] != PaymentState.claimed) return;
+        _setPayment(game, me.id, PaymentState.paid);
+        b._notify(g, (s) => (
+              s.t('Payment confirmed', 'الدفع اتأكد'),
+              s.t('The organizer got your ${s.money(game.payments!.perPlayer)}. Thanks!', 'المنظم استلم ${s.money(game.payments!.perPlayer)}. شكرًا!'),
+            ));
+        b._changed();
+      });
+    }
+  }
+
+  @override
+  Future<int> remindUnpaid(String groupId, String gameId) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final game = b._game(g, gameId);
+    final p = game.payments ?? (throw ApiException('not_found'));
+    final unpaid = [for (final MapEntry(:key, :value) in p.players.entries) if (value == PaymentState.unpaid) key];
+    if (unpaid.contains(b._myMember(g)?.id)) {
+      b._notify(g, (s) => (
+            s.t('Pitch fee due: ${g.name}', 'فلوس الملعب: ${g.name}'),
+            s.t('Your share for ${s.shortDay(game.kickoffAt)} is ${s.money(p.perPlayer)}.',
+                'نصيبك من ماتش ${s.shortDay(game.kickoffAt)} ${s.money(p.perPlayer)}.'),
+          ));
+    }
+    // A few of the players pay as soon as they're reminded.
+    if (g.id == demoGroupId) {
+      for (final (i, id) in unpaid.where((id) => id != _meId).take(3).indexed) {
+        b._after(Duration(seconds: 3 + i * 2), () => b._botClaim(game, id));
+      }
+    }
+    return unpaid.length;
+  }
+
+  @override
+  Future<void> voteMvp(String groupId, String gameId, String memberId) async {
+    final g = b._group(groupId);
+    final me = b._myMember(g) ?? (throw ApiException('not_member'));
+    final game = b._game(g, gameId);
+    final voters = game.mvpVoters;
+    final closes = game.mvpClosesAt;
+    if (voters == null || game.mvpWinners != null || closes == null || !b.now().isBefore(closes)) {
+      throw ApiException('invalid_argument');
+    }
+    final squad = game.squad;
+    if (!squad.contains(me.id) || !squad.contains(memberId) || memberId == me.id) throw ApiException('invalid_argument');
+    game.ballots[me.id] = memberId;
+    if (!voters.contains(me.id)) voters.add(me.id);
+    b._changed();
+  }
+
+  @override
+  Future<void> closeMvpVoting(String groupId, String gameId) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    b._closeMvp(g, b._game(g, gameId));
+  }
+
+  @override
+  Future<String> startSeason(String groupId, String name) async {
+    final g = b._group(groupId);
+    b._requireAdmin(g);
+    final t = b.now();
+    g.season = Season(id: 's${t.millisecondsSinceEpoch}', name: _text(name, max: 40), startedAt: t);
+    b._changed();
+    return g.season.id;
+  }
+
+  @override
+  Future<void> leaveGroup(String groupId) async {
+    final g = b._group(groupId);
+    b._takeOut(g, b._myMember(g) ?? (throw ApiException('not_member')));
+    b._changed();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    final mine = [for (final g in b._groups.values) if (b._myMember(g) != null) g];
+    if (mine.any((g) => g.adminUids.length == 1 && g.adminUids.first == demoUid)) throw ApiException('last_organizer');
+    for (final g in mine) {
+      final me = b._myMember(g)!;
+      b._takeOut(g, me);
+      // Records keep the numbers, never the name or number.
+      g.members[me.id] = _member(g.members[me.id]!, name: _formerMember, phone: '', uid: null);
+      for (final game in g.games.values) {
+        game.entries = [
+          for (final e in game.entries)
+            e.memberId != me.id
+                ? e
+                : Entry(
+                    memberId: e.memberId,
+                    name: _formerMember,
+                    seq: e.seq,
+                    joinedAt: e.joinedAt,
+                    state: e.state,
+                    source: e.source,
+                    offerExpiresAt: e.offerExpiresAt,
+                    outReason: e.outReason,
+                    lateDropOut: e.lateDropOut,
+                  ),
+        ];
+      }
+      g.levels.remove(me.id);
+    }
     b._changed();
   }
 }

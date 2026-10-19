@@ -80,6 +80,8 @@ export async function createGroup(
     rules: DEFAULT_RULES,
     reminders: DEFAULT_REMINDERS,
     pitchFee: null,
+    payTo: null,
+    season: { id: "s1", name: "Season 1", startedAt: stamp },
     adminUids: [input.uid],
     memberUids: [input.uid],
     currentGameId: null,
@@ -117,6 +119,7 @@ export interface SettingsPatch {
   name?: unknown;
   venue?: unknown;
   pitchFee?: unknown;
+  payTo?: unknown;
   schedule?: Partial<WeeklySchedule>;
   rules?: Partial<GroupRules>;
   reminders?: Partial<GroupReminders>;
@@ -133,6 +136,15 @@ export function mergeSettings(group: GroupDoc, patch: SettingsPatch): Partial<Gr
     }
     out.pitchFee = fee as number | null;
   }
+  if (patch.payTo !== undefined) {
+    const p = (patch.payTo ?? {}) as Record<string, unknown>;
+    const field = (v: unknown, name: string) => {
+      if (v === undefined || v === null || v === "") return null;
+      if (typeof v !== "string" || v.trim().length > 60) throw invalid(`${name} must be up to 60 characters`);
+      return v.trim() || null;
+    };
+    out.payTo = { instapay: field(p.instapay, "instapay"), wallet: field(p.wallet, "wallet"), note: field(p.note, "note") };
+  }
   if (patch.schedule) {
     const schedule = { ...group.schedule, ...pick(patch.schedule, Object.keys(DEFAULT_SCHEDULE)) };
     const problem = validateSchedule(schedule as WeeklySchedule);
@@ -146,6 +158,10 @@ export function mergeSettings(group: GroupDoc, patch: SettingsPatch): Partial<Gr
     if (!int(rules.confirmWindowMinutes, 5, 24 * 60)) throw invalid("confirmWindowMinutes out of range");
     if (!int(rules.matchDayConfirmWindowMinutes, 5, 24 * 60)) throw invalid("matchDayConfirmWindowMinutes out of range");
     if (!int(rules.lateDropOutHours, 0, 168)) throw invalid("lateDropOutHours out of range");
+    rules.regularsHeadStartMinutes ??= 0;
+    rules.lateDropOutsStartAsReserves ??= false;
+    if (!int(rules.regularsHeadStartMinutes, 0, 240)) throw invalid("regularsHeadStartMinutes must be 0 to 240");
+    if (typeof rules.lateDropOutsStartAsReserves !== "boolean") throw invalid("lateDropOutsStartAsReserves must be true or false");
     try {
       rules.kits = normalizeKits(rules.kits);
     } catch (e) {
@@ -275,6 +291,7 @@ export async function updateMember(
     name?: unknown;
     role?: unknown;
     isGoalkeeper?: unknown;
+    isRegular?: unknown;
   },
 ): Promise<void> {
   const group = await loadGroup(db, input.groupId);
@@ -286,6 +303,7 @@ export async function updateMember(
   const changes: Partial<MemberDoc> = {};
   if (input.name !== undefined) changes.name = nonEmpty(input.name, "name", 40);
   if (input.isGoalkeeper !== undefined) changes.isGoalkeeper = input.isGoalkeeper === true;
+  if (input.isRegular !== undefined) changes.isRegular = input.isRegular === true;
   if (input.role !== undefined) {
     if (input.role !== "admin" && input.role !== "player") throw invalid("role must be admin or player");
     changes.role = input.role as Role;
@@ -294,7 +312,7 @@ export async function updateMember(
   batch.update(ref, changes);
   if (changes.role && member.uid) {
     if (changes.role === "player" && group.adminUids.length === 1 && group.adminUids[0] === member.uid) {
-      throw invalid("the group needs at least one organizer");
+      throw new AppError("last_organizer", "the group needs at least one organizer");
     }
     batch.update(groupRef(db, input.groupId), {
       adminUids: changes.role === "admin" ? FieldValue.arrayUnion(member.uid) : FieldValue.arrayRemove(member.uid),
@@ -309,26 +327,41 @@ export async function removeMember(
 ): Promise<Notice[]> {
   const group = await loadGroup(db, input.groupId);
   requireAdmin(group, input.uid);
-  const ref = groupRef(db, input.groupId).collection("members").doc(input.memberId);
+  return takeOutOfGroup(db, group, input.groupId, input.memberId, input.uid, input.now);
+}
+
+/**
+ * Take a member out of the group (removed by an organizer, or leaving): off
+ * every open poll's list, and no longer a member. Their history stays.
+ */
+export async function takeOutOfGroup(
+  db: Firestore,
+  group: GroupDoc,
+  groupId: string,
+  memberId: string,
+  actorUid: string,
+  now: number,
+): Promise<Notice[]> {
+  const ref = groupRef(db, groupId).collection("members").doc(memberId);
   const snap = await ref.get();
   if (!snap.exists) throw new AppError("not_found", "member not found");
   const member = snap.data() as MemberDoc;
   if (member.uid && group.adminUids.includes(member.uid) && group.adminUids.length === 1) {
-    throw invalid("the group needs at least one organizer");
+    throw new AppError("last_organizer", "the group needs at least one organizer");
   }
 
   const notices: Notice[] = [];
-  const active = await groupRef(db, input.groupId).collection("games").where("status", "in", ACTIVE_STATUSES).get();
+  const active = await groupRef(db, groupId).collection("games").where("status", "in", ACTIVE_STATUSES).get();
   for (const game of active.docs) {
     try {
       const r = await applyRosterAction(db, {
-        groupId: input.groupId,
+        groupId,
         gameId: game.id,
-        memberId: input.memberId,
+        memberId,
         action: "remove",
         source: "admin",
-        actorUid: input.uid,
-        now: input.now,
+        actorUid,
+        now,
       });
       notices.push(...r.notices);
     } catch (e) {
@@ -341,11 +374,11 @@ export async function removeMember(
   const batch = db.batch();
   batch.update(ref, { active: false });
   if (member.uid) {
-    batch.update(groupRef(db, input.groupId), {
+    batch.update(groupRef(db, groupId), {
       memberUids: FieldValue.arrayRemove(member.uid),
       adminUids: FieldValue.arrayRemove(member.uid),
     });
-    batch.set(db.collection("users").doc(member.uid), { groupIds: FieldValue.arrayRemove(input.groupId) }, { merge: true });
+    batch.set(db.collection("users").doc(member.uid), { groupIds: FieldValue.arrayRemove(groupId) }, { merge: true });
   }
   await batch.commit();
   return notices;

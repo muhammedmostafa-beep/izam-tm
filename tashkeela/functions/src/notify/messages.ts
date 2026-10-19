@@ -57,6 +57,21 @@ export const pushText = {
       { title: "انتهى وقت التأكيد", body: "المكان راح للاحتياطي اللي بعدك. تقدر تدخل الطابور تاني." },
       { title: "Your offer expired", body: "The spot went to the next reserve. You can rejoin the queue." },
     ),
+  pollOpenRegulars: (lang: Language, p: { group: string; when: string; minutes: number }): PushText =>
+    pick(
+      lang,
+      {
+        title: `بدري للأساسيين: ${p.group}`,
+        body: `${p.when}. التصويت مفتوح ليك قبل الباقي بـ${formatNumber(p.minutes, "ar")} دقيقة.`,
+      },
+      { title: `Regulars' head start: ${p.group}`, body: `${p.when}. The poll is open for you ${p.minutes} minutes before everyone else.` },
+    ),
+  paymentDue: (lang: Language, p: { amount: string; when: string; payTo: string }): PushText =>
+    pick(
+      lang,
+      { title: `فلوس الملعب: ${p.amount}`, body: `ماتش ${p.when}. ادفع لـ${p.payTo}، وبعدين دوس "دفعت" في التطبيق.` },
+      { title: `Pitch fee: ${p.amount}`, body: `For ${p.when}. Pay ${p.payTo}, then tap "I've paid" in the app.` },
+    ),
   pollChanged: (lang: Language, p: { when: string; venue: string }): PushText =>
     pick(
       lang,
@@ -139,6 +154,9 @@ export const TEMPLATES = {
   pollOpen: "tashkeela_poll_open", // {{1}} when, {{2}} venue, {{3}} spots; buttons: I'm in / Not this week
   spotOffered: "tashkeela_spot_offered", // {{1}} when, {{2}} deadline; buttons: Confirm / Pass
   matchDay: "tashkeela_match_day", // {{1}} kick-off time, {{2}} venue, {{3}} squad size
+  pollChanged: "tashkeela_poll_changed", // {{1}} new date and time, {{2}} venue
+  pollCancelled: "tashkeela_poll_cancelled", // {{1}} date and time of the game called off
+  paymentDue: "tashkeela_payment_due", // {{1}} amount, {{2}} game date, {{3}} where to pay
 } as const;
 
 /** Quick-reply button payloads: "t1|ACTION|groupId|gameId". */
@@ -151,6 +169,22 @@ export function buttonPayload(action: ButtonAction, groupId: string, gameId: str
 export function parseButtonPayload(
   payload: string,
 ): { action: ButtonAction; groupId: string; gameId: string } | null {
-  const m = /^t1\|(JOIN|SKIP|CONFIRM|PASS)\|([A-Za-z0-9]{1,40})\|(\d{4}-\d{2}-\d{2})$/.exec(payload);
+  // Weekly polls are keyed by date ("2026-10-22"); polls an organizer makes have Firestore auto IDs.
+  const m = /^t1\|(JOIN|SKIP|CONFIRM|PASS)\|([A-Za-z0-9]{1,40})\|(\d{4}-\d{2}-\d{2}|[A-Za-z0-9]{1,40})$/.exec(payload);
   return m ? { action: m[1] as ButtonAction, groupId: m[2], gameId: m[3] } : null;
+}
+
+/** "120 EGP" / "١٢٠ جنيه" */
+export function formatMoney(amount: number, lang: Language): string {
+  return lang === "ar" ? `${formatNumber(amount, "ar")} جنيه` : `${formatNumber(amount, "en")} EGP`;
+}
+
+/** Where to pay, from the group's settings: "InstaPay ahmed@instapay or wallet 0100…". */
+export function payToText(lang: Language, p: { instapay: string | null; wallet: string | null; note: string | null } | null): string {
+  const ways = [
+    p?.instapay ? `InstaPay ${p.instapay}` : null,
+    p?.wallet ? (lang === "ar" ? `محفظة ${p.wallet}` : `wallet ${p.wallet}`) : null,
+  ].filter((w): w is string => w !== null);
+  if (!ways.length) return p?.note ?? (lang === "ar" ? "المنظم" : "the organizer");
+  return ways.join(lang === "ar" ? " أو " : " or ");
 }

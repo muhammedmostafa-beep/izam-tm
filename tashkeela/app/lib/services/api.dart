@@ -29,7 +29,8 @@ abstract interface class Api {
   Future<void> addMember(String groupId,
       {required String name, required String phone, bool isGoalkeeper = false, String language = 'ar'});
 
-  Future<void> updateMember(String groupId, String memberId, {String? name, String? role, bool? isGoalkeeper});
+  Future<void> updateMember(String groupId, String memberId,
+      {String? name, String? role, bool? isGoalkeeper, bool? isRegular});
 
   Future<void> removeMember(String groupId, String memberId);
 
@@ -59,6 +60,32 @@ abstract interface class Api {
 
   /// Organizer only. Saves the game's teams, or clears them with null.
   Future<void> saveTeams(String groupId, String gameId, List<Team>? teams);
+
+  /// Organizer only. The pitch fee for one game (null: none); everyone's share is recomputed.
+  Future<void> setGameFee(String groupId, String gameId, num? fee);
+
+  /// Organizer only. Mark a player paid or unpaid.
+  Future<void> setPayment(String groupId, String gameId, String memberId, {required bool paid});
+
+  /// A player says they've paid their share; the organizer confirms.
+  Future<void> claimPayment(String groupId, String gameId);
+
+  /// Organizer only. Reminds everyone who hasn't paid; returns how many.
+  Future<int> remindUnpaid(String groupId, String gameId);
+
+  /// A player who played votes for someone else who played. Votes are secret.
+  Future<void> voteMvp(String groupId, String gameId, String memberId);
+
+  /// Organizer only. Counts the votes now instead of a day after kick-off.
+  Future<void> closeMvpVoting(String groupId, String gameId);
+
+  /// Organizer only. Starts a new season table; returns its id.
+  Future<String> startSeason(String groupId, String name);
+
+  Future<void> leaveGroup(String groupId);
+
+  /// Leaves every group and erases your name and number; signs you out.
+  Future<void> deleteAccount();
 }
 
 /// What the organizer fills in for a poll.
@@ -131,13 +158,15 @@ class FirebaseApi implements Api {
       });
 
   @override
-  Future<void> updateMember(String groupId, String memberId, {String? name, String? role, bool? isGoalkeeper}) =>
+  Future<void> updateMember(String groupId, String memberId,
+          {String? name, String? role, bool? isGoalkeeper, bool? isRegular}) =>
       _call('updateMember', {
         'groupId': groupId,
         'memberId': memberId,
         'name': ?name,
         'role': ?role,
         'isGoalkeeper': ?isGoalkeeper,
+        'isRegular': ?isRegular,
       });
 
   @override
@@ -190,4 +219,37 @@ class FirebaseApi implements Api {
         'gameId': gameId,
         'teams': teams?.map((t) => t.toMap()).toList(),
       });
+
+  @override
+  Future<void> setGameFee(String groupId, String gameId, num? fee) =>
+      _call('setGameFee', {'groupId': groupId, 'gameId': gameId, 'fee': fee});
+
+  @override
+  Future<void> setPayment(String groupId, String gameId, String memberId, {required bool paid}) =>
+      _call('setPayment', {'groupId': groupId, 'gameId': gameId, 'memberId': memberId, 'state': paid ? 'paid' : 'unpaid'});
+
+  @override
+  Future<void> claimPayment(String groupId, String gameId) => _call('claimPayment', {'groupId': groupId, 'gameId': gameId});
+
+  @override
+  Future<int> remindUnpaid(String groupId, String gameId) async =>
+      (await _call('remindUnpaid', {'groupId': groupId, 'gameId': gameId}))['reminded'] as int? ?? 0;
+
+  @override
+  Future<void> voteMvp(String groupId, String gameId, String memberId) =>
+      _call('voteMvp', {'groupId': groupId, 'gameId': gameId, 'choice': memberId});
+
+  @override
+  Future<void> closeMvpVoting(String groupId, String gameId) =>
+      _call('closeMvpVoting', {'groupId': groupId, 'gameId': gameId});
+
+  @override
+  Future<String> startSeason(String groupId, String name) async =>
+      (await _call('startSeason', {'groupId': groupId, 'name': name}))['seasonId'] as String;
+
+  @override
+  Future<void> leaveGroup(String groupId) => _call('leaveGroup', {'groupId': groupId});
+
+  @override
+  Future<void> deleteAccount() => _call('deleteAccount');
 }

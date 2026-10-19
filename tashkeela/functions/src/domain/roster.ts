@@ -91,6 +91,13 @@ export interface RosterView {
   out: Entry[];
 }
 
+/**
+ * Added to the sequence number of a player who starts the poll as a reserve
+ * (a late drop-out last time, when the group has that rule): everyone who
+ * votes normally is ahead of them, whenever they vote.
+ */
+export const PENALTY_SEQ = 1_000_000;
+
 const isActive = (e: Entry) => e.state !== "out";
 const bySeq = (a: Entry, b: Entry) => a.seq - b.seq;
 
@@ -115,8 +122,9 @@ export function join(
   const existing = entries.find((e) => e.memberId === player.memberId);
   if (existing && isActive(existing)) throw new RosterError("already_in");
 
-  const activeCount = entries.filter(isActive).length;
-  const inSquad = activeCount < ctx.rules.squadSize;
+  // Usually the new entry is last in line; a penalized one (see PENALTY_SEQ) can land behind it.
+  const ahead = entries.filter((e) => isActive(e) && e.seq < seq).length;
+  const inSquad = ahead < ctx.rules.squadSize;
   const entry: Entry = {
     memberId: player.memberId,
     name: player.name,
@@ -127,7 +135,7 @@ export function join(
   };
   const next = entries.filter((e) => e.memberId !== player.memberId).concat(entry);
   const events: RosterEvent[] = [
-    { type: "joined", memberId: player.memberId, position: activeCount + 1, inSquad },
+    { type: "joined", memberId: player.memberId, position: ahead + 1, inSquad },
   ];
   return settle(entries, next, events, ctx);
 }

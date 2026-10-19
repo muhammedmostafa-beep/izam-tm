@@ -23,6 +23,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late List<Kit> _kits = [...widget.group.rules.kits];
   late bool _weekly = widget.group.schedule.enabled;
   late final _fee = TextEditingController(text: widget.group.pitchFee?.toString() ?? '');
+  late final _instapay = TextEditingController(text: widget.group.payTo.instapay ?? '');
+  late final _wallet = TextEditingController(text: widget.group.payTo.wallet ?? '');
+  late final _payNote = TextEditingController(text: widget.group.payTo.note ?? '');
+  late int _headStart = widget.group.rules.regularsHeadStartMinutes;
+  late bool _lateReserves = widget.group.rules.lateDropOutsStartAsReserves;
   late int _matchDay = widget.group.schedule.matchWeekday;
   late String _matchTime = widget.group.schedule.matchTime;
   late int _duration = widget.group.schedule.matchDurationMinutes;
@@ -45,6 +50,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _name.dispose();
     _venue.dispose();
     _fee.dispose();
+    _instapay.dispose();
+    _wallet.dispose();
+    _payNote.dispose();
     super.dispose();
   }
 
@@ -52,6 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'name': _name.text.trim(),
         'venue': _venue.text.trim(),
         'pitchFee': num.tryParse(_fee.text.trim()),
+        'payTo': {'instapay': _instapay.text.trim(), 'wallet': _wallet.text.trim(), 'note': _payNote.text.trim()},
         'schedule': {
           'matchWeekday': _matchDay,
           'matchTime': _matchTime,
@@ -67,6 +76,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'matchDayConfirmWindowMinutes': _matchDayWindow,
           'lateDropOutHours': _lateHours,
           'quietHours': _quiet ? {'start': _quietStart, 'end': _quietEnd} : null,
+          'regularsHeadStartMinutes': _headStart,
+          'lateDropOutsStartAsReserves': _lateReserves,
         },
         'reminders': {
           'pollOpening': _remindPoll,
@@ -150,7 +161,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
         TextField(
           controller: _fee,
           keyboardType: TextInputType.number,
-          decoration: InputDecoration(labelText: s.t('Pitch fee (EGP, optional)', 'سعر الملعب (جنيه، اختياري)')),
+          decoration: InputDecoration(
+            labelText: s.t('Pitch fee (EGP, optional)', 'سعر الملعب (جنيه، اختياري)'),
+            helperText: s.t('Split between the players at kick-off', 'بيتقسم على اللعيبة وقت الماتش'),
+          ),
+        ),
+
+        SectionTitle(s.t('Paying the pitch', 'دفع الملعب')),
+        Text(
+          s.t('Players see these when they owe their share.', 'اللعيبة بيشوفوا دول لما يبقى عليهم فلوس.'),
+          style: const TextStyle(color: Palette.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _instapay,
+          textDirection: TextDirection.ltr,
+          decoration: InputDecoration(labelText: s.t('InstaPay address or number', 'عنوان أو رقم إنستاباي'), hintText: 'name@instapay'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _wallet,
+          keyboardType: TextInputType.phone,
+          textDirection: TextDirection.ltr,
+          decoration: InputDecoration(labelText: s.t('Mobile wallet number', 'رقم المحفظة'), hintText: '010 0123 4567'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _payNote,
+          decoration: InputDecoration(labelText: s.t('Note (optional)', 'ملاحظة (اختياري)'), hintText: s.t('Or cash at the pitch', 'أو كاش في الملعب')),
         ),
 
         SectionTitle(s.t('Poll', 'التصويت')),
@@ -234,6 +272,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
           timeTile(s.t('Night starts', 'الليل يبدأ'), _quietStart, (v) => _quietStart = v),
           timeTile(s.t('Night ends', 'الليل يخلص'), _quietEnd, (v) => _quietEnd = v),
         ],
+
+        SectionTitle(s.t('Priority', 'الأولوية')),
+        choice(
+          s.t('Regulars can vote early', 'الأساسيين يصوتوا بدري'),
+          _headStart,
+          const [0, 15, 30, 60, 120],
+          (m) => m == 0 ? s.t('Off', 'مقفول') : s.t('${minutes(m)} before everyone', 'قبل الكل بـ${minutes(m)}'),
+          (v) => _headStart = v,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            s.t('Mark the regulars in the Group tab (tap a member).', 'حدد الأساسيين من صفحة الجروب (دوس على العضو).'),
+            style: const TextStyle(color: Palette.muted, fontSize: 13),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _lateReserves,
+          onChanged: (v) => setState(() => _lateReserves = v),
+          title: Text(s.t('Late drop-outs start the next poll as reserves', 'اللي يعتذر متأخر يبدأ التصويت الجاي احتياطي')),
+          subtitle: Text(s.t('For one poll: everyone who votes normally goes ahead of them.',
+              'لمدة تصويت واحد: كل اللي بيصوت عادي بيبقى قبله.')),
+        ),
 
         SectionTitle(s.t('WhatsApp reminders', 'تنبيهات واتساب')),
         SwitchListTile(

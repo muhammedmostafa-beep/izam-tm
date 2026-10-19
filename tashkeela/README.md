@@ -4,7 +4,9 @@ The weekly football poll for our group, as an app. The poll opens itself at
 the agreed minute, the first 18 are in, everyone after is a numbered reserve,
 and when someone drops out the next reserve is offered the spot automatically.
 Reminders go out on WhatsApp and as push notifications; the organizer shares
-the list and the champions photo to the WhatsApp group in one tap.
+the list and the champions photo to the WhatsApp group in one tap. After the
+game the pitch fee is split and tracked, the players vote for man of the
+match, and a season table keeps score.
 
 Plan and design: [`docs/football-app/app-plan.md`](../docs/football-app/app-plan.md),
 [`docs/football-app/design/`](../docs/football-app/design/).
@@ -30,6 +32,12 @@ tashkeela/
   "Pass" moves the offer to the next reserve.
 - **Late drop-outs.** Dropping out within 24 hours of kick-off is marked as
   late and shown in the list.
+- **Priority rules** (off by default; Game settings > Priority). Regulars,
+  whom the organizer marks in the member list, can vote 15 to 120 minutes
+  before everyone else and are told first. A late drop-out can start the next
+  poll behind everyone who votes normally, for one poll: their entry gets
+  `PENALTY_SEQ` added to its sequence number (`functions/src/domain/roster.ts`),
+  and the penalty is lifted at the next kick-off.
 - **Polls.** The weekly poll is made from the group's schedule (it can be
   turned off). Organizers can also make polls of their own, each with its
   date, kick-off time, length, location, squad size and when voting opens,
@@ -45,10 +53,33 @@ tashkeela/
   are spread evenly). Organizers can shuffle, move players and change kits,
   then save and share the teams to WhatsApp; everyone sees the teams, never
   the levels. The winners are recorded by kit.
+- **Pitch fee.** At kick-off the group's pitch fee is split between the squad,
+  rounded up to a whole pound. Each player sees their share and where to pay
+  (InstaPay address, wallet number or a note, from Game settings) and taps
+  **I've paid**; the organizer confirms, can mark anyone paid or unpaid, change
+  the fee for one game, and remind everyone who hasn't paid (push and
+  WhatsApp).
+- **Man of the match.** For 24 hours after kick-off (or until the organizer
+  closes it) everyone who played votes for someone else who played. Votes are
+  secret: ballots live in `groups/{groupId}/ballots`, which no app can read;
+  everyone sees who has voted and, at the end, the winner (several on a tie).
+- **Season table.** Played, wins, man-of-the-match awards, attendance and
+  drop-outs (late ones flagged), sortable by wins, MVPs or games played. The
+  server rebuilds it from the season's games after every change, so it always
+  adds up. A win counts when the organizer has saved the teams and recorded
+  the winning kit. Organizers can start a new season; the old table is kept.
+- **Leaving and deleting your data.** Anyone can leave a group (Group tab).
+  **Delete my account and data** takes you out of every group, erases your
+  name and number (past games and season tables keep only "Former member", so
+  the numbers still add up) and deletes your sign-in, in line with Egypt's
+  Personal Data Protection Law (Law 151 of 2020). A group's last organizer has
+  to hand over first.
 - **Scheduler.** `tick` runs every minute: it creates the week's poll, and
-  for every poll ahead opens it on time, expires offers, sends the match-day
-  reminder and closes it at kick-off. Every change is logged under
-  `games/{gameId}/log`.
+  for every poll ahead tells the regulars early (when the group uses the head
+  start), opens it on time, expires offers, sends the match-day reminder and
+  closes it at kick-off. Kick-off splits the fee, opens the man-of-the-match
+  vote and updates the season table; a day later the vote is counted. Every
+  list change is logged under `games/{gameId}/log`.
 
 All the numbers above are per-group settings (Group tab > Game settings).
 
@@ -82,7 +113,7 @@ flutter run -d chrome          # or an Android emulator
 With no Firebase settings the app uses the local emulators. Sign in with any
 number; the code appears in the emulator log ("To verify the phone number …").
 The scheduler doesn't run in the emulator: use **Open the poll now** on the
-This week tab.
+Polls tab.
 
 ## Demo app (nothing to set up)
 
@@ -94,6 +125,10 @@ drop out and answer offers using the same list rules as the server
 simulated players come with levels, so the team maker has something to
 balance. The Group tab has demo controls: make someone drop out, skip to after
 the game, switch between the organizer's and a player's view, start over.
+After the game the simulated players vote for man of the match and about half
+pay their share within seconds; the season table starts with 11 earlier
+weeks. Six players and you are marked as regulars, so turning on the head
+start in Game settings shows them voting early.
 
 ```sh
 cd tashkeela/app
@@ -196,7 +231,7 @@ key before sharing builds widely
 2. At developers.facebook.com create a **Business** app, add **WhatsApp**,
    and register the number. Note the **Phone number ID**, and create a
    permanent access token for a System User in Business Settings.
-3. In WhatsApp Manager create these three **Utility** templates, each in
+3. In WhatsApp Manager create these six **Utility** templates, each in
    Arabic (`ar`) and English (`en`). Keep the button order: the first button
    always means yes.
 
@@ -205,12 +240,20 @@ key before sharing builds widely
    | `tashkeela_poll_open` | The poll for {{1}} at {{2}} is open. {{3}} spots, first come first served. | I'm in · Not this week |
    | `tashkeela_spot_offered` | A spot opened up for {{1}}. You're next in line. Confirm by {{2}} or it goes to the next reserve. | Confirm · Pass |
    | `tashkeela_match_day` | Match day! Kick-off at {{1}}, {{2}}. You're in the squad of {{3}}. | none |
+   | `tashkeela_poll_changed` | The game has moved: now {{1}} at {{2}}. Your place on the list stays. | none |
+   | `tashkeela_poll_cancelled` | The game on {{1}} is called off. We'll let you know about the next one. | none |
+   | `tashkeela_payment_due` | Your share of the pitch is {{1}} for the game on {{2}}. Pay to: {{3}}. | none |
 
    Arabic bodies:
 
    - `tashkeela_poll_open`: التصويت مفتوح لماتش {{1}} في {{2}}. {{3}} مكان، الأسبق أولاً. (أنا جاي · مش الأسبوع ده)
    - `tashkeela_spot_offered`: فيه مكان فضي في ماتش {{1}}. إنت الدور عليك. أكد قبل {{2}} وإلا هيروح للاحتياطي اللي بعدك. (أكد · عدّي)
    - `tashkeela_match_day`: النهارده الماتش! البداية {{1}} في {{2}}. إنت ضمن تشكيلة الـ{{3}}.
+   - `tashkeela_poll_changed`: الماتش اتغير: المعاد الجديد {{1}} في {{2}}. مكانك في القائمة زي ما هو.
+   - `tashkeela_poll_cancelled`: ماتش {{1}} اتلغى. هنبلغك بالماتش الجاي.
+   - `tashkeela_payment_due`: نصيبك من الملعب {{1}} لماتش {{2}}. الدفع على: {{3}}.
+
+   Until a template is approved, its messages go out as push notifications only.
 
 4. Store the token and the app secret (App settings > Basic):
 
@@ -234,24 +277,30 @@ delivery is checked against Meta's signature.
 
 ```
 users/{uid}                               phone, groupIds, pushIds, language
-groups/{groupId}                          name, venue, schedule, rules, reminders, adminUids, memberUids
-groups/{groupId}/members/{memberId}       name, phone, uid, role, isGoalkeeper, whatsappOptIn, language
-groups/{groupId}/games/{gameId}           a poll: kind, kickoffAt, venue, squadSize, pollOpensAt, status, teams
+groups/{groupId}                          name, venue, schedule, rules, reminders, pitchFee, payTo, season,
+                                          adminUids, memberUids
+groups/{groupId}/members/{memberId}       name, phone, uid, role, isGoalkeeper, isRegular, reserveNext,
+                                          whatsappOptIn, language
+groups/{groupId}/games/{gameId}           a poll: kind, kickoffAt, venue, squadSize, pollOpensAt, status, teams,
+                                          payments (fee, perPlayer, each player's state), mvp (voters, winners)
                                           (weekly polls: gameId = kick-off date; others: auto ID)
 groups/{groupId}/games/{gameId}/entries   one per player: seq, state, offer, drop-out
 groups/{groupId}/games/{gameId}/log       every vote and change, for disputes
 groups/{groupId}/private/levels           each member's level, organizers only
+groups/{groupId}/ballots/{gameId_member}  secret man-of-the-match votes, no app can read them
+groups/{groupId}/stats/{seasonId}         the season table
 ```
 
 Only Cloud Functions write. Members can read their own groups; nobody else
 can read anything (`firestore.rules`, tested in `functions/integration/rules.test.ts`).
 
-## Not built yet
+## Not built: a native iPhone app
 
-These are planned for later, once the group asks for them: payment tracker, stats and season
-table, priority rules for regulars, and a native iPhone build. A moved or
-called-off poll is announced by push only; WhatsApp would need two more
-approved templates.
+A native iPhone build needs a Mac with Xcode and an Apple Developer account
+(99 USD a year) to sign it and hand it out through TestFlight, so it isn't
+built here. iPhone players use the web app from the home screen (above); the
+Flutter code builds for iOS unchanged once those are in place
+(`flutter build ipa`).
 
 Fonts (Barlow Condensed, DM Sans, IBM Plex Sans Arabic) are bundled under the
 SIL Open Font License; see `app/assets/fonts/`.

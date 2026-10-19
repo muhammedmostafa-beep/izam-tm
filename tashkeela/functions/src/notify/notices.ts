@@ -6,7 +6,8 @@ import { RosterEvent } from "../domain/roster";
  * the database change has been committed.
  */
 export type Notice =
-  | { kind: "poll_open"; groupId: string; gameId: string }
+  /** "regulars": the regulars' head start; "others": everyone else, after a head start; "all" (default): everyone. */
+  | { kind: "poll_open"; groupId: string; gameId: string; audience?: "regulars" | "others" | "all" }
   | { kind: "offered"; groupId: string; gameId: string; memberId: string; expiresAt: number }
   | { kind: "expired"; groupId: string; gameId: string; memberId: string }
   | { kind: "match_day"; groupId: string; gameId: string }
@@ -14,6 +15,8 @@ export type Notice =
   | { kind: "poll_changed"; groupId: string; gameId: string }
   /** The organizer called the game off; tells everyone on the list. */
   | { kind: "poll_cancelled"; groupId: string; gameId: string }
+  /** The organizer reminds players who haven't paid their share of the pitch. */
+  | { kind: "payment_due"; groupId: string; gameId: string; memberIds: string[] }
   | {
       kind: "dropped";
       groupId: string;

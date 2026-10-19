@@ -9,6 +9,7 @@ import '../services/services.dart';
 import '../widgets.dart';
 import 'group_tab.dart';
 import 'squad_tab.dart';
+import 'table_tab.dart';
 import 'this_week_tab.dart';
 
 /// Everything the tabs show, from one consistent set of live streams.
@@ -201,6 +202,7 @@ class _HomeShellState extends State<HomeShell> {
         onSelectGame: _selectGame,
       ),
       SquadTab(view: view),
+      TableTab(view: view),
       GroupTab(view: view),
     ];
     return Scaffold(
@@ -211,6 +213,8 @@ class _HomeShellState extends State<HomeShell> {
         destinations: [
           NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: s.t('Polls', 'الماتشات')),
           NavigationDestination(icon: const Icon(Icons.groups_outlined), selectedIcon: const Icon(Icons.groups), label: s.t('Squad', 'التشكيلة')),
+          NavigationDestination(
+              icon: const Icon(Icons.leaderboard_outlined), selectedIcon: const Icon(Icons.leaderboard), label: s.t('Table', 'الجدول')),
           NavigationDestination(icon: const Icon(Icons.settings_outlined), selectedIcon: const Icon(Icons.settings), label: s.t('Group', 'الجروب')),
         ],
       ),

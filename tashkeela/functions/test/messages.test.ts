@@ -23,6 +23,13 @@ describe("WhatsApp buttons", () => {
     assert.deepEqual(parseButtonPayload(p), { action: "CONFIRM", groupId: "abc123", gameId: "2026-10-22" });
     assert.equal(parseButtonPayload("t1|DELETE|abc|2026-10-22"), null);
     assert.equal(parseButtonPayload("t1|JOIN|../x|2026-10-22"), null);
+    // A poll the organizer made (Firestore auto ID).
+    assert.deepEqual(parseButtonPayload(buttonPayload("JOIN", "abc123", "Xk3P9qLmN2vB7rT1sY0w")), {
+      action: "JOIN",
+      groupId: "abc123",
+      gameId: "Xk3P9qLmN2vB7rT1sY0w",
+    });
+    assert.equal(parseButtonPayload("t1|JOIN|abc|../games"), null);
   });
 
   it("verifies Meta's signature", () => {

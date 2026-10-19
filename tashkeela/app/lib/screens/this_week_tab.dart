@@ -8,6 +8,7 @@ import '../roster_line.dart';
 import '../services/services.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'after_game.dart';
 import 'home_shell.dart';
 import 'poll_editor_screen.dart';
 import 'result_screen.dart';
@@ -71,6 +72,8 @@ class ThisWeekTab extends StatelessWidget {
         _MatchCard(view: view, game: game, onOpenSquad: onOpenSquad),
         const SizedBox(height: 12),
         _ActionArea(view: view, game: game),
+        MvpSection(view: view, game: game),
+        PaymentsSection(view: view, game: game),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => SharePlus.instance.share(ShareParams(
@@ -307,7 +310,6 @@ class _ActionArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.s;
-    final status = view.myStatus;
 
     if (view.me == null) {
       return Text(s.t("You're not a member of this group.", 'إنت مش عضو في الجروب ده.'),
@@ -316,23 +318,24 @@ class _ActionArea extends StatelessWidget {
 
     switch (game.status) {
       case GameStatus.scheduled:
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(children: [
-              const Icon(Icons.schedule, color: Palette.muted),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Countdown(
-                  target: game.pollOpensAt,
-                  builder: (_, left) => Text(
-                    s.t('Poll opens ${s.when(game.pollOpensAt)}${s.sep}in ${s.countdown(left)}',
-                        'التصويت يفتح ${s.when(game.pollOpensAt)}${s.sep}بعد ${s.countdown(left)}'),
+        // Regulars may vote during the head start, before the poll opens for everyone.
+        final headStart = view.group.rules.regularsHeadStartMinutes;
+        if (headStart == 0 || !view.me!.isRegular) return _opensAt(context, game.pollOpensAt);
+        final earlyFrom = game.pollOpensAt.subtract(Duration(minutes: headStart));
+        return Countdown(
+          target: earlyFrom,
+          builder: (context, left) => left > Duration.zero
+              ? _opensAt(context, earlyFrom, regular: true)
+              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Note(
+                    s.t("Regulars' head start${s.sep}open to all at ${s.time(game.pollOpensAt)}",
+                        'أولوية الأساسيين${s.sep}يفتح للكل ${s.time(game.pollOpensAt)}'),
+                    color: Palette.amber,
+                    icon: Icons.star,
                   ),
-                ),
-              ),
-            ]),
-          ),
+                  const SizedBox(height: 10),
+                  _forStatus(context),
+                ]),
         );
       case GameStatus.closed || GameStatus.played || GameStatus.cancelled:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -355,19 +358,64 @@ class _ActionArea extends StatelessWidget {
           ],
         ]);
       case GameStatus.open:
-        break;
+        return _forStatus(context);
     }
+  }
 
+  Widget _opensAt(BuildContext context, DateTime at, {bool regular = false}) {
+    final s = context.s;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          Icon(regular ? Icons.star_outline : Icons.schedule, color: regular ? Palette.amber : Palette.muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Countdown(
+              target: at,
+              builder: (_, left) => Text(regular
+                  ? s.t("You're a regular: you can vote from ${s.when(at)}${s.sep}in ${s.countdown(left)}",
+                      'إنت أساسي: تقدر تصوت من ${s.when(at)}${s.sep}بعد ${s.countdown(left)}')
+                  : s.t('Poll opens ${s.when(at)}${s.sep}in ${s.countdown(left)}',
+                      'التصويت يفتح ${s.when(at)}${s.sep}بعد ${s.countdown(left)}')),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// A late drop-out last time: this poll they start behind everyone who votes normally.
+  Widget? _reserveNote(BuildContext context) {
+    final s = context.s;
+    if (!view.group.rules.lateDropOutsStartAsReserves || !view.me!.startsAsReserveIn(game)) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        s.t('You dropped out late last time, so this poll you start behind everyone who votes normally.',
+            'إنت اعتذرت متأخر المرة اللي فاتت، فالتصويت ده هتبدأ بعد كل اللي بيصوتوا عادي.'),
+        style: const TextStyle(color: Palette.amber),
+      ),
+    );
+  }
+
+  /// What to do in an open poll (or a regular's early vote), depending on your place in it.
+  Widget _forStatus(BuildContext context) {
+    final s = context.s;
+    final status = view.myStatus;
     switch (status.kind) {
       case MyStatusKind.notIn || MyStatusKind.out:
-        return SizedBox(
-          height: 64,
-          child: BusyButton(
-            icon: Icons.sports_soccer,
-            label: s.t("I'M IN", 'أنا جاي'),
-            onPressed: () => _act(context, 'join'),
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ?_reserveNote(context),
+          SizedBox(
+            height: 64,
+            child: BusyButton(
+              icon: Icons.sports_soccer,
+              label: s.t("I'M IN", 'أنا جاي'),
+              onPressed: () => _act(context, 'join'),
+            ),
           ),
-        );
+        ]);
       case MyStatusKind.squad:
         return BusyButton(
           style: BusyStyle.danger,
@@ -377,6 +425,7 @@ class _ActionArea extends StatelessWidget {
         );
       case MyStatusKind.reserve:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ?_reserveNote(context),
           Text(
             s.t("We'll message you on WhatsApp and here as soon as a spot opens.",
                 'هنبعتلك على واتساب وهنا أول ما يفضى مكان.'),

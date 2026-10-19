@@ -1,5 +1,7 @@
 import { Firestore, Timestamp } from "firebase-admin/firestore";
 import * as roster from "../domain/roster";
+import { PENALTY_SEQ } from "../domain/roster";
+import { MINUTE } from "../domain/time";
 import { Entry, RosterContext, RosterEvent, RosterResult, Source } from "../domain/roster";
 import { entryFromDoc, EntryDoc, entryToDoc, GameDoc, GroupDoc, MemberDoc, rosterRules } from "../model";
 import { Notice, noticesFromEvents } from "../notify/notices";
@@ -59,19 +61,35 @@ export async function applyRosterAction(
     const kickoffAt = game.kickoffAt.toMillis();
     const ctx: RosterContext = { now, kickoffAt, rules: rosterRules(group, game) };
 
+    // Regulars may vote during the head start, before the poll opens for everyone.
+    const headStart = group.rules.regularsHeadStartMinutes ?? 0;
+    const early =
+      game.status === "scheduled" &&
+      headStart > 0 &&
+      member?.isRegular === true &&
+      now >= game.pollOpensAt.toMillis() - headStart * MINUTE;
     if (action !== "expire") {
-      if (game.status === "scheduled") throw new AppError("poll_not_open");
-      if (game.status !== "open" || now >= kickoffAt) throw new AppError("game_closed");
+      if (game.status === "scheduled" && !early) throw new AppError("poll_not_open");
+      if ((game.status !== "open" && !early) || now >= kickoffAt) throw new AppError("game_closed");
     }
 
     let result: RosterResult;
     let nextSeq = game.nextSeq;
     switch (action) {
-      case "join":
+      case "join": {
         if (!member || !member.active) throw new AppError("not_member");
-        result = roster.join(entries, { memberId: memberId!, name: member.name }, nextSeq, input.source, ctx);
+        // A late drop-out last time starts this poll behind everyone who votes normally.
+        const penalty = member.reserveNext;
+        const penalized =
+          group.rules.lateDropOutsStartAsReserves === true &&
+          !!penalty &&
+          penalty.gameId !== gameId &&
+          penalty.since.toMillis() < kickoffAt;
+        const seq = penalized ? PENALTY_SEQ + nextSeq : nextSeq;
+        result = roster.join(entries, { memberId: memberId!, name: member.name }, seq, input.source, ctx);
         nextSeq += 1;
         break;
+      }
       case "drop":
         result = roster.dropOut(entries, memberId!, ctx);
         break;
@@ -104,6 +122,14 @@ export async function applyRosterAction(
       nextOfferExpiry: expiry === null ? null : Timestamp.fromMillis(expiry),
       updatedAt: stamp,
     });
+    // Late drop-outs start the next poll as reserves, when the group uses that rule.
+    if (group.rules.lateDropOutsStartAsReserves) {
+      for (const ev of result.events) {
+        if (ev.type === "dropped" && ev.late) {
+          tx.update(gRef.collection("members").doc(ev.memberId), { reserveNext: { gameId, since: game.kickoffAt } });
+        }
+      }
+    }
     for (const ev of result.events) {
       tx.set(ref.collection("log").doc(), {
         ...ev,

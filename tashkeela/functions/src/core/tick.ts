@@ -1,9 +1,10 @@
 import { Firestore, Timestamp } from "firebase-admin/firestore";
-import { HOUR } from "../domain/time";
+import { HOUR, MINUTE } from "../domain/time";
 import { GameDoc, GroupDoc } from "../model";
 import { Notice } from "../notify/notices";
 import { ACTIVE_STATUSES, ensureWeeklyGame, gameRef, groupRef, refreshCurrentGame } from "./games";
 import { applyRosterAction } from "./roster-ops";
+import { closeMvp, onKickoff } from "./season";
 
 /**
  * One scheduler pass for a group: create this week's poll, then for every
@@ -21,6 +22,10 @@ export async function tickGroup(db: Firestore, groupId: string, now: number): Pr
     changed ||= r.statusChanged;
   }
   if (changed) await refreshCurrentGame(db, groupId, now);
+
+  // MVP voting closes a day after kick-off.
+  const mvpDue = await groupRef(db, groupId).collection("games").where("mvpClosesAt", "<=", Timestamp.fromMillis(now)).get();
+  for (const doc of mvpDue.docs) await closeMvp(db, groupId, doc.id, now);
   return notices;
 }
 
@@ -41,10 +46,17 @@ async function tickGame(
     const updates: Partial<GameDoc> = {};
     let status = game.status;
 
-    if (status === "scheduled" && now >= game.pollOpensAt.toMillis()) status = "open";
+    // The regulars' head start: they hear first, and may vote from then on.
+    const opens = game.pollOpensAt.toMillis();
+    const headStart = (group.rules.regularsHeadStartMinutes ?? 0) * MINUTE;
+    if (status === "scheduled" && headStart > 0 && !game.earlyNotified && now >= opens - headStart && now < opens) {
+      updates.earlyNotified = true;
+      notices.push({ kind: "poll_open", groupId, gameId, audience: "regulars" });
+    }
+    if (status === "scheduled" && now >= opens) status = "open";
     if (status === "open" && !game.pollOpenNotified && now < kickoff) {
       updates.pollOpenNotified = true;
-      notices.push({ kind: "poll_open", groupId, gameId });
+      notices.push(game.earlyNotified ? { kind: "poll_open", groupId, gameId, audience: "others" } : { kind: "poll_open", groupId, gameId });
     }
     const reminderAt = kickoff - group.reminders.matchDayHoursBefore * HOUR;
     if (status === "open" && !game.matchDayReminderSent && now >= reminderAt && now < kickoff) {
@@ -73,5 +85,8 @@ async function tickGame(
     });
     notices.push(...r.notices);
   }
+  // Kick-off (after offers nobody answered have lapsed): split the pitch fee, open MVP voting,
+  // lift last week's penalties, update the season table.
+  if (statusChanged && game.status === "closed") await onKickoff(db, groupId, gameId, now);
   return { notices, statusChanged };
 }

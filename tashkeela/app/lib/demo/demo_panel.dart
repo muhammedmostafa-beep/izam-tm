@@ -47,11 +47,11 @@ class DemoPanel extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.fast_forward_outlined),
             title: Text(s.t('Skip to after the game', 'روح لبعد الماتش')),
-            subtitle: Text(s.t('Kick-off passes and the poll closes, so you can record the winners',
-                'الماتش يبدأ والتصويت يتقفل، وتقدر تسجل الفريق الكسبان')),
+            subtitle: Text(s.t('Kick-off passes: the players vote for man of the match and pay their share',
+                'الماتش يبدأ: اللعيبة يصوتوا لنجم الماتش ويدفعوا نصيبهم')),
             onTap: () => runAction(context, backend.skipToAfterTheGame,
-                success: s.t('The game is over. Record the winners from This week.',
-                    'الماتش خلص. سجل الفريق الكسبان من الأسبوع ده.')),
+                success: s.t('The game is over. See the Polls tab: winners, man of the match, the pitch fee.',
+                    'الماتش خلص. شوف صفحة الماتشات: الكسبان، نجم الماتش، وفلوس الملعب.')),
           ),
           const Divider(),
           SwitchListTile(

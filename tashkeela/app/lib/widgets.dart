@@ -32,6 +32,22 @@ class Pill extends StatelessWidget {
   }
 }
 
+/// A short status line with an icon that wraps when it's long ("Waiting for the organizer to confirm").
+class Note extends StatelessWidget {
+  const Note(this.text, {super.key, required this.icon, this.color = Palette.lime});
+
+  final String text;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w700))),
+      ]);
+}
+
 /// Initials in a circle, the way players appear across the app.
 class Avatar extends StatelessWidget {
   const Avatar(this.name, {super.key, this.size = 36, this.color});

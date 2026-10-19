@@ -30,6 +30,8 @@ beforeEach(async () => {
     await setDoc(doc(db, "groups/g1/games/2026-10-22/entries/m1"), { state: "confirmed", seq: 1 });
     await setDoc(doc(db, "users/alice"), { phone: "+20100", groupIds: ["g1"], pushIds: [] });
     await setDoc(doc(db, "groups/g1/private/levels"), { levels: { m1: 2 } });
+    await setDoc(doc(db, "groups/g1/stats/s1"), { games: 3, players: {} });
+    await setDoc(doc(db, "groups/g1/ballots/2026-10-22_m1"), { voter: "m1", choice: "m2" });
   });
 });
 
@@ -70,6 +72,13 @@ describe("security rules", () => {
     await assertFails(getDoc(doc(env.authenticatedContext("alice").firestore(), "groups/g1/private/levels")));
     await assertFails(getDoc(doc(env.authenticatedContext("mallory").firestore(), "groups/g1/private/levels")));
     await assertFails(setDoc(doc(env.authenticatedContext("org").firestore(), "groups/g1/private/levels"), { levels: { m1: 1 } }));
+  });
+
+  it("shows the season table to members, and MVP votes to nobody", async () => {
+    await assertSucceeds(getDoc(doc(env.authenticatedContext("alice").firestore(), "groups/g1/stats/s1")));
+    await assertFails(getDoc(doc(env.authenticatedContext("mallory").firestore(), "groups/g1/stats/s1")));
+    await assertFails(getDoc(doc(env.authenticatedContext("alice").firestore(), "groups/g1/ballots/2026-10-22_m1")));
+    await assertFails(getDoc(doc(env.authenticatedContext("org").firestore(), "groups/g1/ballots/2026-10-22_m1")));
   });
 
   it("lets people manage only their own push IDs and language", async () => {

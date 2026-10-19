@@ -39,10 +39,17 @@ service cloud.firestore {
         allow read: if isMember(groupId);
       }
 
+      // The season table.
+      match /stats/{seasonId} {
+        allow read: if isMember(groupId);
+      }
+
       // Players' levels: organizers only.
       match /private/{document} {
         allow read: if isAdmin(groupId);
       }
+
+      // MVP ballots (groups/{groupId}/ballots) have no rule: votes stay secret, even from organizers.
     }
   }
 }

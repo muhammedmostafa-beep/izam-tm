@@ -27,6 +27,9 @@ abstract interface class Repo {
 
   /// Organizers only: each member's level (0-4), by member id.
   Stream<Map<String, int>> levels(String groupId);
+
+  /// The season table; null until the first game of the season.
+  Stream<SeasonTable?> stats(String groupId, String seasonId);
 }
 
 class FirestoreRepo implements Repo {
@@ -98,4 +101,11 @@ class FirestoreRepo implements Repo {
       .doc('levels')
       .snapshots()
       .map((d) => ((d.data()?['levels'] as Map?) ?? const {}).map((k, v) => MapEntry(k as String, (v as num).toInt())));
+
+  @override
+  Stream<SeasonTable?> stats(String groupId, String seasonId) => _group(groupId)
+      .collection('stats')
+      .doc(seasonId)
+      .snapshots()
+      .map((d) => d.exists ? SeasonTable.fromMap(d.id, d.data()!) : null);
 }

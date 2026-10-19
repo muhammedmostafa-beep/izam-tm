@@ -9,7 +9,9 @@ export type AppErrorCode =
   | "invalid"
   | "already_exists"
   | "poll_not_open"
-  | "game_closed";
+  | "game_closed"
+  /** The last organizer can't leave or be removed; make someone else organizer first. */
+  | "last_organizer";
 
 /** An expected failure the app shows to the player (not a bug). */
 export class AppError extends Error {

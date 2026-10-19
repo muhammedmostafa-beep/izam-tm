@@ -4,7 +4,17 @@ import { gameRef, groupRef } from "../core/games";
 import { toWaId } from "../core/phone";
 import { entryFromDoc, EntryDoc, GameDoc, GroupDoc, MemberDoc, UserDoc } from "../model";
 import { rosterView } from "../domain/roster";
-import { buttonPayload, formatClock, formatNumber, formatWhen, pushText, PushText, TEMPLATES } from "./messages";
+import {
+  buttonPayload,
+  formatClock,
+  formatMoney,
+  formatNumber,
+  formatWhen,
+  payToText,
+  pushText,
+  PushText,
+  TEMPLATES,
+} from "./messages";
 import { Notice } from "./notices";
 import { PushSender, WhatsAppSender } from "./senders";
 
@@ -62,10 +72,17 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
 
   let out: Outgoing;
   switch (n.kind) {
-    case "poll_open":
+    case "poll_open": {
+      const audience = n.audience ?? "all";
+      const headStart = group.rules.regularsHeadStartMinutes ?? 0;
       out = {
-        recipients: all,
-        push: (r) => pushText.pollOpen(r.member.language, { group: group.name, when: when(r), spots: squadSize }),
+        recipients: all.filter((r) =>
+          audience === "all" ? true : audience === "regulars" ? r.member.isRegular === true : r.member.isRegular !== true,
+        ),
+        push: (r) =>
+          audience === "regulars"
+            ? pushText.pollOpenRegulars(r.member.language, { group: group.name, when: when(r), minutes: headStart })
+            : pushText.pollOpen(r.member.language, { group: group.name, when: when(r), spots: squadSize }),
         whatsapp: !group.reminders.pollOpening ? undefined : (r) => ({
           template: TEMPLATES.pollOpen,
           params: [when(r), venue, formatNumber(squadSize, r.member.language)],
@@ -73,6 +90,7 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
         }),
       };
       break;
+    }
     case "offered":
       out = {
         recipients: byId(n.memberId),
@@ -115,11 +133,37 @@ async function deliver(db: Firestore, n: Notice, senders: Senders): Promise<void
       break;
     }
     case "poll_changed":
-      out = { recipients: await onList(), push: (r) => pushText.pollChanged(r.member.language, { when: when(r), venue }) };
+      out = {
+        recipients: await onList(),
+        push: (r) => pushText.pollChanged(r.member.language, { when: when(r), venue }),
+        whatsapp: (r) => ({ template: TEMPLATES.pollChanged, params: [when(r), venue] }),
+      };
       break;
     case "poll_cancelled":
-      out = { recipients: await onList(), push: (r) => pushText.pollCancelled(r.member.language, { when: when(r) }) };
+      out = {
+        recipients: await onList(),
+        push: (r) => pushText.pollCancelled(r.member.language, { when: when(r) }),
+        whatsapp: (r) => ({ template: TEMPLATES.pollCancelled, params: [when(r)] }),
+      };
       break;
+    case "payment_due": {
+      const amount = game.payments?.perPlayer ?? 0;
+      const ids = new Set(n.memberIds);
+      out = {
+        recipients: all.filter((r) => ids.has(r.memberId)),
+        push: (r) =>
+          pushText.paymentDue(r.member.language, {
+            amount: formatMoney(amount, r.member.language),
+            when: when(r),
+            payTo: payToText(r.member.language, group.payTo ?? null),
+          }),
+        whatsapp: (r) => ({
+          template: TEMPLATES.paymentDue,
+          params: [formatMoney(amount, r.member.language), when(r), payToText(r.member.language, group.payTo ?? null)],
+        }),
+      };
+      break;
+    }
   }
 
   try {
